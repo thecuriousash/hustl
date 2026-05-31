@@ -48,7 +48,7 @@
                         </span>
                         {% endif %}
                     </td>
-                    <td class="py-6 text-right text-xs text-slate-500">{{ u.id }}</td>
+                    <td class="py-6 text-right text-xs text-slate-500">{{ u.created_at.strftime('%d %b %Y') if u.created_at else '—' }}</td>
                 </tr>
                 {% endfor %}
             </tbody>

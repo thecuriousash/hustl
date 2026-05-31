@@ -131,12 +131,16 @@ def init_db():
                         role TEXT DEFAULT 'pending_verification',
                         is_verified INTEGER DEFAULT 0)''', commit=True)
         safe_execute(conn, 'ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT', commit=True)
+        safe_execute(conn, 'ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP', commit=True)
 
         safe_execute(conn, '''CREATE TABLE IF NOT EXISTS market_items (
                         id SERIAL PRIMARY KEY,
                         title TEXT, brand TEXT, price TEXT, whatsapp TEXT, image TEXT,
                         is_sold INTEGER DEFAULT 0,
-                        seller_brand TEXT, user_id INTEGER)''', commit=True)
+                        seller_brand TEXT, user_id INTEGER,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''', commit=True)
+
+        safe_execute(conn, 'ALTER TABLE market_items ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP', commit=True)
 
         safe_execute(conn, '''CREATE TABLE IF NOT EXISTS lost_items (
                         id SERIAL PRIMARY KEY,
@@ -231,6 +235,30 @@ def get_current_user():
 @app.route("/health")
 def health():
     return {"status": "ok"}, 200
+
+
+@app.route("/search")
+@login_required
+def search():
+    q = request.args.get('q', '').strip()
+    if not q:
+        return redirect(url_for('market'))
+    conn = get_db_connection()
+    try:
+        items = safe_execute(conn, '''SELECT market_items.*,
+                                        COALESCE(users.display_name, market_items.seller_brand, 'Campus Seller') AS seller_display
+                                 FROM market_items
+                                 LEFT JOIN users ON market_items.user_id = users.id
+                                 WHERE market_items.is_sold = 0
+                                   AND (LOWER(market_items.title) LIKE %s
+                                     OR LOWER(market_items.brand) LIKE %s
+                                     OR LOWER(COALESCE(users.display_name, '')) LIKE %s)
+                                 ORDER BY market_items.id DESC''',
+                             (f'%{q.lower()}%', f'%{q.lower()}%', f'%{q.lower()}%'), fetchall=True) or []
+    finally:
+        close_db_connection(conn)
+    return render_template("market.html", items=items, search_query=q,
+                           user_type='buyer', user=get_current_user())
 
 
 @app.route("/")
@@ -422,15 +450,34 @@ def market():
                           request.form.get('whatsapp'), filename, seller_brand, user_id), commit=True)
             return redirect(url_for('market'))
 
-        items = safe_execute(conn, '''SELECT market_items.*, 
-                                        COALESCE(users.display_name, market_items.seller_brand, 'Campus Seller') AS seller_display
-                                FROM market_items
-                                LEFT JOIN users ON market_items.user_id = users.id
-                                WHERE market_items.is_sold = 0
-                                ORDER BY market_items.id DESC''', fetchall=True) or []
+        category = request.args.get('category', '').strip()
+        page = max(1, int(request.args.get('page', 1)))
+        per_page = 12
+        offset = (page - 1) * per_page
+
+        where_clause = 'market_items.is_sold = 0'
+        params = []
+        if category:
+            where_clause += ' AND LOWER(market_items.brand) = %s'
+            params.append(category.lower())
+
+        count_sql = f'SELECT COUNT(*) as count FROM market_items WHERE {where_clause}'
+        total = safe_execute(conn, count_sql, tuple(params), fetchone=True)['count']
+
+        items_sql = f'''SELECT market_items.*,
+                                COALESCE(users.display_name, market_items.seller_brand, 'Campus Seller') AS seller_display
+                         FROM market_items
+                         LEFT JOIN users ON market_items.user_id = users.id
+                         WHERE {where_clause}
+                         ORDER BY market_items.created_at DESC NULLS LAST, market_items.id DESC
+                         LIMIT %s OFFSET %s'''
+        params.extend([per_page, offset])
+        items = safe_execute(conn, items_sql, tuple(params), fetchall=True) or []
     finally:
         close_db_connection(conn)
-    return render_template("market.html", items=items,
+    return render_template("market.html", items=items, category=category,
+                           page=page, total_pages=max(1, -(-total // per_page)),
+                           search_query='',
                            user_type=(user['user_type'] if user else 'buyer'),
                            user=user)
 
@@ -499,11 +546,13 @@ def seller_profile(user_id):
         ) or []
     finally:
         close_db_connection(conn)
+    join_date = (seller.get('created_at').strftime('%B %Y')
+                  if seller.get('created_at') else '2026')
     return render_template("seller_profile.html",
                            name=seller['display_name'],
                            whatsapp=seller['whatsapp'],
                            items=items,
-                           join_date="2026")
+                           join_date=join_date)
 
 
 @app.route("/market/sold/<int:item_id>")
@@ -747,6 +796,30 @@ def reject_claim(claim_id):
     finally:
         close_db_connection(conn)
     return redirect(url_for('admin_dashboard'))
+
+
+@app.route("/market/delete/<int:item_id>")
+def delete_listing(item_id):
+    if not session.get('email'):
+        return redirect(url_for('login'))
+    conn = get_db_connection()
+    try:
+        user = safe_execute(conn, 'SELECT * FROM users WHERE email = %s', (session['email'],), fetchone=True)
+        item = safe_execute(conn, 'SELECT * FROM market_items WHERE id = %s', (item_id,), fetchone=True)
+        if not user or not item:
+            abort(404)
+        if item['user_id'] != user['id'] and not session.get('is_admin'):
+            abort(403)
+        if item['image'] and item['image'] != 'default.png' and supabase:
+            try:
+                supabase.storage.from_(STORAGE_BUCKET).remove([item['image']])
+            except Exception:
+                pass
+        safe_execute(conn, 'DELETE FROM market_items WHERE id = %s', (item_id,), commit=True)
+        flash("Listing deleted.", "success")
+    finally:
+        close_db_connection(conn)
+    return redirect(url_for('seller_dash'))
 
 
 if __name__ == "__main__":
