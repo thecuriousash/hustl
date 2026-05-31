@@ -2,6 +2,9 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from supabase import create_client, Client
 import os
+import re
+import uuid
+from datetime import timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -9,39 +12,56 @@ load_dotenv()
 from flask import Flask, render_template, request, redirect, session, url_for, flash, abort
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_wtf.csrf import CSRFProtect
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import logging
 
 app = Flask(__name__)
-# Load secrets from environment for production readiness
 app.secret_key = os.environ.get('SECRET_KEY', 'hustl_dev_fallback_key')
+if app.secret_key == 'hustl_dev_fallback_key':
+    logging.warning("Using fallback SECRET_KEY. Set SECRET_KEY environment variable for production.")
 
-# Production/session security settings (override via env in Render)
-app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'False') == 'True'
+csrf = CSRFProtect(app)
+
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://",
+)
+
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(
+    hours=int(os.environ.get('SESSION_LIFETIME_HOURS', 4))
+)
+
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'True') == 'True'
 app.config['SESSION_COOKIE_HTTPONLY'] = os.environ.get('SESSION_COOKIE_HTTPONLY', 'True') == 'True'
 app.config['SESSION_COOKIE_SAMESITE'] = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax')
 
-# Upload limits and allowed extensions
-app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_CONTENT_LENGTH', 4 * 1024 * 1024))  # 4 MB default
+app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_CONTENT_LENGTH', 4 * 1024 * 1024))
 ALLOWED_EXTENSIONS = set(os.environ.get('ALLOWED_EXTENSIONS', 'png,jpg,jpeg,gif').split(','))
 
-# Admin credentials from env vars (never hardcode in production)
 ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
-ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'changeme')
+ADMIN_PASSWORD_HASH = generate_password_hash(os.environ.get('ADMIN_PASSWORD', 'changeme'))
 
-# Supabase Credentials
 SUPABASE_URL = os.environ.get('SUPABASE_URL')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY')
 DATABASE_URL = os.environ.get('DATABASE_URL')
+STORAGE_BUCKET = os.environ.get('STORAGE_BUCKET', 'market-images')
 
 if SUPABASE_URL and SUPABASE_KEY:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 else:
-    # We still allow the app to run without it, but uploads will fail
     supabase = None
     logging.warning("Missing SUPABASE_URL or SUPABASE_KEY. Image uploads will fail.")
 
+EMAIL_RE = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 
 def get_db_connection():
     if not DATABASE_URL:
@@ -51,7 +71,6 @@ def get_db_connection():
     return conn
 
 
-# safe execute helper: wraps execute/commit and logs errors
 def safe_execute(conn, sql, params=(), commit=False, fetchone=False, fetchall=False):
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -65,7 +84,7 @@ def safe_execute(conn, sql, params=(), commit=False, fetchone=False, fetchall=Fa
             return cur
     except psycopg2.Error as e:
         conn.rollback()
-        logging.exception('DB error executing SQL: %s | params=%s | Error: %s', sql, params, e)
+        app.logger.error('DB error executing SQL: %s | params=%s | Error: %s', sql, params, e)
         return None
 
 
@@ -75,7 +94,6 @@ def init_db():
         return
     conn = get_db_connection()
     try:
-        # Create base tables if they don't exist
         safe_execute(conn, '''CREATE TABLE IF NOT EXISTS users (
                         id SERIAL PRIMARY KEY,
                         email TEXT UNIQUE, password_hash TEXT, reg_number TEXT, whatsapp TEXT,
@@ -83,7 +101,6 @@ def init_db():
                         id_proof_link TEXT, social_link TEXT,
                         role TEXT DEFAULT 'pending_verification',
                         is_verified INTEGER DEFAULT 0)''', commit=True)
-        # Migrate existing users
         safe_execute(conn, 'ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT', commit=True)
 
         safe_execute(conn, '''CREATE TABLE IF NOT EXISTS market_items (
@@ -96,7 +113,6 @@ def init_db():
                         id SERIAL PRIMARY KEY,
                         title TEXT, description TEXT, location TEXT, custody TEXT,
                         image TEXT, is_recovered INTEGER DEFAULT 0)''', commit=True)
-        # Migrate existing lost_items
         safe_execute(conn, 'ALTER TABLE lost_items ADD COLUMN IF NOT EXISTS is_recovered INTEGER DEFAULT 0', commit=True)
 
         safe_execute(conn, '''CREATE TABLE IF NOT EXISTS claim_requests (
@@ -109,32 +125,55 @@ def init_db():
     finally:
         conn.close()
 
-# Initialize database with error handling - don't crash deployment if DB is unreachable
+
 try:
     init_db()
 except Exception as e:
-    logging.error(f"Failed to initialize database at startup: {e}. The app will continue but database operations may fail until the issue is resolved.")
+    app.logger.error("Failed to initialize database at startup: %s. The app will continue but database operations may fail until the issue is resolved.", e)
 
-# --- HELPER: get public storage URL ---
+
 def get_image_url(filename):
     if not filename or filename == 'default.png':
         return url_for('static', filename='images/default.png')
     if supabase:
         try:
-            return supabase.storage.from_('market-images').get_public_url(filename)
+            return supabase.storage.from_(STORAGE_BUCKET).get_public_url(filename)
         except Exception:
             pass
-    # Fallback if unconfigured
     return url_for('static', filename=f'images/{filename}')
 
-# Context processor to make get_image_url available in all templates
+
 @app.context_processor
 def utility_processor():
     return dict(get_image_url=get_image_url)
 
-# --- AUTH HELPERS ---
+
+@app.after_request
+def add_security_headers(resp):
+    resp.headers['X-Content-Type-Options'] = 'nosniff'
+    resp.headers['X-Frame-Options'] = 'DENY'
+    resp.headers['X-XSS-Protection'] = '1; mode=block'
+    resp.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    return resp
+
+
+@app.errorhandler(404)
+def not_found(e):
+    return render_template("error.html", code=404, message="Page not found."), 404
+
+
+@app.errorhandler(403)
+def forbidden(e):
+    return render_template("error.html", code=403, message="You don't have permission to access this."), 403
+
+
+@app.errorhandler(500)
+def server_error(e):
+    app.logger.error("Internal server error: %s", e)
+    return render_template("error.html", code=500, message="Something went wrong."), 500
+
+
 def get_current_user():
-    """Return the current user row or None."""
     email = session.get('email')
     if not email:
         return None
@@ -146,16 +185,14 @@ def get_current_user():
         finally:
             conn.close()
     except Exception as e:
-        logging.error(f"Database error in get_current_user: {e}")
+        app.logger.error("Database error in get_current_user: %s", e)
         return None
 
 
-# --- ROUTES ---
-
-# Health check endpoint - doesn't require database
 @app.route("/health")
 def health():
     return {"status": "ok"}, 200
+
 
 @app.route("/")
 def index():
@@ -183,13 +220,12 @@ def index():
         finally:
             conn.close()
     except Exception as e:
-        logging.error(f"Database error in index route: {e}")
+        app.logger.error("Database error in index route: %s", e)
         market_items = []
         lost_items = []
     return render_template("index.html", user=user, market_items=market_items, lost_items=lost_items)
 
 
-# --- PROPER AUTHENTICATION ---
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if session.get('email'):
@@ -201,11 +237,11 @@ def login():
         try:
             user = safe_execute(conn, 'SELECT * FROM users WHERE email = %s', (email,), fetchone=True)
             if user and user.get('password_hash') and check_password_hash(user['password_hash'], password):
+                session.permanent = True
                 session['email'] = email
                 flash("Welcome back!", "success")
                 return redirect(url_for('index'))
-            
-            # Fallback for old accounts without password (require signup)
+
             if user and not user.get('password_hash'):
                 flash("Please sign up to set a password for your old account.", "error")
             else:
@@ -213,6 +249,7 @@ def login():
         finally:
             conn.close()
     return render_template("auth.html", is_login=True)
+
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
@@ -223,10 +260,13 @@ def signup():
         password = request.form.get('password')
         confirm_password = request.form.get('confirm_password')
 
-        if not email or '@' not in email:
+        if not email or not EMAIL_RE.match(email):
             flash("Please enter a valid email address.", "error")
             return redirect(url_for('signup'))
-        if not password or password != confirm_password:
+        if not password or len(password) < 8:
+            flash("Password must be at least 8 characters.", "error")
+            return redirect(url_for('signup'))
+        if password != confirm_password:
             flash("Passwords do not match.", "error")
             return redirect(url_for('signup'))
 
@@ -237,21 +277,21 @@ def signup():
             if existing and existing.get('password_hash'):
                 flash("Account already exists. Please log in.", "error")
                 return redirect(url_for('login'))
-            
+
             if existing and not existing.get('password_hash'):
-                # Claim old account
                 safe_execute(conn, 'UPDATE users SET password_hash = %s WHERE email = %s', (hashed_pw, email), commit=True)
             else:
-                # Create new account
                 safe_execute(conn, '''INSERT INTO users (email, password_hash, user_type, role) 
-                                      VALUES (%s, %s, %s, %s)''', 
+                                      VALUES (%s, %s, %s, %s)''',
                              (email, hashed_pw, 'buyer', 'buyer'), commit=True)
+            session.permanent = True
             session['email'] = email
             flash("Account created successfully!", "success")
             return redirect(url_for('index'))
         finally:
             conn.close()
     return render_template("auth.html", is_login=False)
+
 
 @app.route("/logout")
 def logout():
@@ -263,12 +303,14 @@ def logout():
 def seller_onboarding():
     if not session.get('email'):
         return redirect(url_for('login'))
-        
+
     conn = get_db_connection()
     try:
         user = safe_execute(conn, 'SELECT * FROM users WHERE email = %s', (session['email'],), fetchone=True)
+        if not user:
+            return redirect(url_for('logout'))
+
         if request.method == "POST":
-            # Become a seller logic
             legal_name = request.form.get('legal_name')
             display_name = request.form.get('display_name')
             reg_number = request.form.get('reg_number')
@@ -283,13 +325,14 @@ def seller_onboarding():
                           social_link, session['email']), commit=True)
             flash("Your seller profile has been submitted for review.", "success")
             return redirect(url_for('seller_onboarding'))
-            
-        if user and user.get('reg_number') and user.get('is_verified') == 0:
+
+        if user.get('reg_number') and user.get('is_verified') == 0:
             return render_template("pending_approval.html")
-            
+
     finally:
         conn.close()
     return render_template("seller_onboarding.html")
+
 
 @app.route("/market", methods=["GET", "POST"])
 def market():
@@ -300,7 +343,6 @@ def market():
         user = safe_execute(conn, 'SELECT * FROM users WHERE email = %s', (session['email'],), fetchone=True)
 
         if request.method == "POST":
-            # Only verified sellers can post
             if not user or user['is_verified'] != 1 or user['user_type'] != 'seller':
                 flash("Only verified sellers can post items.", "error")
                 return redirect(url_for('market'))
@@ -312,27 +354,24 @@ def market():
                     flash("File type not allowed.", "error")
                     return redirect(url_for('market'))
                 filename = secure_filename(img.filename)
-                
+
                 if supabase:
-                    # Upload to Supabase Storage
                     file_content = img.read()
-                    import uuid
-                    # Make filename unique to avoid conflicts
                     ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
                     unique_filename = f"{uuid.uuid4().hex}.{ext}" if ext else f"{uuid.uuid4().hex}"
                     try:
-                        supabase.storage.from_('market-images').upload(
-                            file=file_content, 
-                            path=unique_filename, 
+                        supabase.storage.from_(STORAGE_BUCKET).upload(
+                            file=file_content,
+                            path=unique_filename,
                             file_options={"content-type": img.content_type}
                         )
                         filename = unique_filename
                     except Exception as e:
-                        logging.error("Failed to upload image to supabase: %s", e)
+                        app.logger.error("Failed to upload image to supabase: %s", e)
                         flash("Image upload failed. " + str(e), "error")
-                        return redirect(url_for('list_item'))
+                        return redirect(url_for('market'))
                 else:
-                     flash("Database storage is not configured for remote uploads.", "error")
+                    flash("Database storage is not configured for remote uploads.", "error")
 
             brand = request.form.get('brand') or (user['display_name'] if user else None)
             seller_brand = user['display_name'] if user else None
@@ -357,7 +396,6 @@ def market():
                            user=user)
 
 
-# --- LISTING DETAIL ---
 @app.route("/listing/<int:item_id>")
 def listing_detail(item_id):
     conn = get_db_connection()
@@ -386,7 +424,6 @@ def listing_detail(item_id):
     return render_template("listing_detail.html", item=item, other_products=other_products, quantity=1)
 
 
-# --- SELLER DASHBOARD ---
 @app.route("/seller-dash")
 def seller_dash():
     if not session.get('email'):
@@ -406,7 +443,6 @@ def seller_dash():
     return render_template("seller_dash.html", items=items, user=user)
 
 
-# --- SELLER PROFILE (public) ---
 @app.route("/seller/<int:user_id>")
 def seller_profile(user_id):
     conn = get_db_connection()
@@ -429,7 +465,6 @@ def seller_profile(user_id):
                            join_date="2026")
 
 
-# --- MARK SOLD ---
 @app.route("/market/sold/<int:item_id>")
 def mark_sold(item_id):
     if not session.get('email'):
@@ -440,7 +475,6 @@ def mark_sold(item_id):
         item = safe_execute(conn, 'SELECT * FROM market_items WHERE id = %s', (item_id,), fetchone=True)
         if not user or not item:
             abort(404)
-        # Only the seller who owns the item (or admin) can mark it sold
         if item['user_id'] != user['id'] and not session.get('is_admin'):
             abort(403)
         safe_execute(conn, 'UPDATE market_items SET is_sold = 1 WHERE id = %s', (item_id,), commit=True)
@@ -449,7 +483,6 @@ def mark_sold(item_id):
     return redirect(url_for('seller_dash'))
 
 
-# --- LOST AND FOUND ---
 @app.route("/lost", methods=["GET", "POST"])
 def lost():
     conn = get_db_connection()
@@ -461,17 +494,20 @@ def lost():
                 if not allowed_file(img.filename):
                     flash("File type not allowed.", "error")
                     return redirect(url_for('lost'))
-                filename = secure_filename(img.filename)
+                orig_filename = secure_filename(img.filename)
+                ext = orig_filename.rsplit('.', 1)[1].lower() if '.' in orig_filename else ''
+                unique_filename = f"{uuid.uuid4().hex}.{ext}" if ext else f"{uuid.uuid4().hex}"
                 try:
                     file_data = img.read()
-                    res = supabase.storage.from_('market-images').upload(
+                    supabase.storage.from_(STORAGE_BUCKET).upload(
                         file=file_data,
-                        path=filename,
+                        path=unique_filename,
                         file_options={"content-type": img.content_type}
                     )
-                    print(f"Uploaded successfully to Supabase Storage: {res}")
+                    filename = unique_filename
+                    app.logger.info("Uploaded image to Supabase: %s", unique_filename)
                 except Exception as e:
-                    print(f"Error uploading to Supabase: {e}")
+                    app.logger.error("Error uploading to Supabase: %s", e)
                     flash("Error uploading image to storage.", "error")
                     return redirect(url_for('lost'))
 
@@ -483,21 +519,21 @@ def lost():
             safe_execute(conn,
                          'INSERT INTO lost_items (title, description, location, custody, image, is_recovered) VALUES (%s,%s,%s,%s,%s, 0)',
                          (title, description, location, custody, filename), commit=True)
+            flash("Lost item reported successfully.", "success")
             return redirect(url_for('lost'))
 
         items = safe_execute(conn, 'SELECT * FROM lost_items WHERE is_recovered = 0 ORDER BY id DESC', fetchall=True) or []
-        # Stats logic:
-        recovered_week = safe_execute(conn, 
-                                      "SELECT COUNT(*) as count FROM claim_requests WHERE status = 'approved' AND created_at > NOW() - INTERVAL '7 days'", 
+        recovered_week = safe_execute(conn,
+                                      "SELECT COUNT(*) as count FROM claim_requests WHERE status = 'approved' AND created_at > NOW() - INTERVAL '7 days'",
                                       fetchone=True)['count']
-        verified_returns = safe_execute(conn, 
-                                        "SELECT COUNT(*) as count FROM claim_requests WHERE status = 'approved'", 
+        verified_returns = safe_execute(conn,
+                                        "SELECT COUNT(*) as count FROM claim_requests WHERE status = 'approved'",
                                         fetchone=True)['count']
     finally:
         conn.close()
-    return render_template("lost.html", 
-                           items=items, 
-                           recovered_week=recovered_week, 
+    return render_template("lost.html",
+                           items=items,
+                           recovered_week=recovered_week,
                            verified_returns=verified_returns)
 
 
@@ -516,7 +552,7 @@ def claim_item():
 
     conn = get_db_connection()
     try:
-        print(f"DEBUG: Inserting claim for item {item_id} by {session['email']}")
+        app.logger.info("Inserting claim for item %s by %s", item_id, session['email'])
         safe_execute(conn,
                      'INSERT INTO claim_requests (item_id, requester_email, proof_details) VALUES (%s,%s,%s)',
                      (item_id, session['email'], proof), commit=True)
@@ -531,7 +567,7 @@ def claim_item():
 def admin_dashboard():
     if not session.get('is_admin'):
         return redirect(url_for('admin_login'))
-    
+
     conn = get_db_connection()
     try:
         pending_users = safe_execute(
@@ -556,30 +592,29 @@ def admin_dashboard():
                ORDER BY claim_requests.created_at DESC''',
             fetchall=True
         ) or []
-        print(f"DEBUG: Found {len(claim_requests)} pending claim requests")
-        if claim_requests:
-            print(f"DEBUG: First claim: {claim_requests[0]}")
-        
-        # Real stats for dashboard:
+
         total_users = safe_execute(conn, "SELECT COUNT(*) as count FROM users", fetchone=True)['count']
         active_reports = safe_execute(conn, "SELECT COUNT(*) as count FROM lost_items WHERE is_recovered = 0", fetchone=True)['count']
-        
+
     finally:
         conn.close()
-    return render_template("admin/dashboard.html", 
-                           pending_users=pending_users, 
+    return render_template("admin/dashboard.html",
+                           pending_users=pending_users,
                            market_oversight=market_oversight,
                            claim_requests=claim_requests,
                            total_users=total_users,
                            active_reports=active_reports)
 
+
 @app.route("/admin-login", methods=["GET", "POST"])
 def admin_login():
     if request.method == "POST":
-        if (request.form.get("username") == ADMIN_USERNAME and
-                request.form.get("password") == ADMIN_PASSWORD):
+        username = request.form.get("username")
+        password = request.form.get("password")
+        if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
+            session.permanent = True
             session['is_admin'] = True
-            session['email'] = ADMIN_USERNAME  # Superuser email
+            session['email'] = ADMIN_USERNAME
             flash("Admin super-access granted.", "success")
             return redirect(url_for('admin_dashboard'))
         flash("Invalid credentials.", "error")
@@ -597,6 +632,7 @@ def verify_user(uid):
         conn.close()
     return redirect(url_for('admin_dashboard'))
 
+
 @app.route("/admin/users")
 def admin_manage_users():
     if not session.get('is_admin'):
@@ -607,6 +643,7 @@ def admin_manage_users():
     finally:
         conn.close()
     return render_template("admin/users.html", users=users)
+
 
 @app.route("/admin/manage-items")
 def admin_manage_items():
@@ -622,6 +659,7 @@ def admin_manage_items():
         conn.close()
     return render_template("admin/manage_items.html", items=items)
 
+
 @app.route("/admin/delete-item/<int:item_id>")
 def admin_delete_item(item_id):
     if not session.get('is_admin'):
@@ -631,8 +669,10 @@ def admin_delete_item(item_id):
         item = safe_execute(conn, 'SELECT image FROM market_items WHERE id = %s', (item_id,), fetchone=True)
         if item and item['image'] and item['image'] != 'default.png':
             if supabase:
-                try: supabase.storage.from_('market-images').remove([item['image']])
-                except: pass
+                try:
+                    supabase.storage.from_(STORAGE_BUCKET).remove([item['image']])
+                except Exception:
+                    pass
         safe_execute(conn, 'DELETE FROM market_items WHERE id = %s', (item_id,), commit=True)
     finally:
         conn.close()
@@ -645,12 +685,9 @@ def approve_claim(claim_id):
         return redirect("/")
     conn = get_db_connection()
     try:
-        # Get item_id first
         claim = safe_execute(conn, 'SELECT item_id FROM claim_requests WHERE id = %s', (claim_id,), fetchone=True)
         if claim:
-            # Mark request as approved
             safe_execute(conn, "UPDATE claim_requests SET status = 'approved' WHERE id = %s", (claim_id,), commit=True)
-            # Mark item as recovered
             safe_execute(conn, "UPDATE lost_items SET is_recovered = 1 WHERE id = %s", (claim['item_id'],), commit=True)
             flash("Claim approved and item marked as recovered!", "success")
     finally:
@@ -670,5 +707,7 @@ def reject_claim(claim_id):
         conn.close()
     return redirect(url_for('admin_dashboard'))
 
+
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    debug = os.environ.get('FLASK_ENV') == 'development'
+    app.run(debug=debug, port=5000)

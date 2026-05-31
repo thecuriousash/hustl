@@ -95,6 +95,7 @@
             <p class="text-xs text-slate-500 mb-6 italic" id="claimItemName">Claiming: Item Name</p>
 
             <form action="/claim-item" method="POST" class="space-y-6">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="item_id" id="claimItemId">
                 <div>
                     <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Proof of

@@ -263,6 +263,7 @@
             </button>
             <h2 class="font-brand text-2xl font-bold italic mb-6">List New Product</h2>
             <form action="/market" method="POST" enctype="multipart/form-data" class="space-y-6">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div>
                     <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Title</label>
                     <input type="text" name="title" required placeholder="What are you selling?"
@@ -306,6 +307,7 @@
             </button>
             <h2 class="font-brand text-2xl font-bold italic mb-6 text-amber-500">Report Found Item</h2>
             <form action="/lost" method="POST" enctype="multipart/form-data" class="space-y-6">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div>
                     <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Item Name</label>
                     <input type="text" name="title" required placeholder="e.g., Keys, Wallet"
