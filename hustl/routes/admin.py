@@ -150,14 +150,11 @@ def reject_item(item_id: int):
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE market_items SET is_approved = 0 WHERE id = %s",
-                (item_id,),
-            )
+            cur.execute("DELETE FROM market_items WHERE id = %s", (item_id,))
             conn.commit()
     finally:
         close_db_connection(conn)
-    flash("Item rejected.")
+    flash("Item rejected and removed.")
     return redirect(url_for("admin.dashboard"))
 
 

@@ -67,11 +67,19 @@
                                 <p class="text-[10px] text-slate-500">{{ u.email }}</p>
                             </td>
                             <td class="py-4 text-right">
-                                <form action="/admin/verify/{{ u.id }}" method="POST">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button type="submit"
-                                        class="bg-green-500/10 text-green-500 px-4 py-2 rounded-lg text-[10px] font-bold hover:bg-green-500 hover:text-white transition-all tracking-widest uppercase">Verify</button>
-                                </form>
+                                <div class="flex flex-col gap-2">
+                                    <form action="/admin/verify/{{ u.id }}" method="POST">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit"
+                                            class="bg-green-500/10 text-green-500 px-3 py-1.5 rounded-lg text-[9px] font-bold hover:bg-green-500 hover:text-white transition-all tracking-widest uppercase w-full">Verify</button>
+                                    </form>
+                                    <form action="/admin/delete-user/{{ u.id }}" method="POST"
+                                        onsubmit="return confirm('Remove this user and all their data?')">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit"
+                                            class="bg-red-500/10 text-red-500 px-3 py-1.5 rounded-lg text-[9px] font-bold hover:bg-red-500 hover:text-white transition-all tracking-widest uppercase w-full">Reject</button>
+                                    </form>
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}
