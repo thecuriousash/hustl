@@ -10,6 +10,7 @@
         <div class="absolute -top-24 -right-24 w-48 h-48 bg-purple-500/10 blur-[90px]"></div>
 
         <form action="/admin-login" method="POST" class="space-y-8 relative z-10">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div>
                 <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Admin
                     Username</label>

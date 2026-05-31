@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-lg mx-auto mt-24 text-center animate-up">
+    <h1 class="font-brand text-8xl font-bold italic tracking-tighter neon-text mb-4">{{ code }}</h1>
+    <p class="text-slate-400 text-lg mb-8">{{ message }}</p>
+    <a href="/"
+        class="btn-primary px-8 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest shadow-lg inline-block">
+        Back to Home
+    </a>
+</div>
+{% endblock %}
