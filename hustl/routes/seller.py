@@ -26,7 +26,7 @@ def seller_onboarding():
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE users SET is_seller = TRUE WHERE id = %s",
+                    "UPDATE public.users SET user_type = 'seller' WHERE id = %s",
                     (session["user_id"],),
                 )
                 conn.commit()
@@ -55,7 +55,7 @@ def seller_dash():
             flash("Title and price are required.", "error")
             return redirect(url_for("seller.seller_dash"))
 
-        image_url = None
+        image_path = None
         if file and allowed_file(file.filename):
             ext = file.filename.rsplit(".", 1)[1].lower()
             unique_name = f"{uuid.uuid4().hex}.{ext}"
@@ -68,7 +68,7 @@ def seller_dash():
                         path=unique_name,
                         file_options={"content-type": file.content_type},
                     )
-                    image_url = unique_name
+                    image_path = unique_name
                 except Exception as exc:
                     current_app.logger.error(
                         "Failed to upload image: %s", exc
@@ -79,9 +79,9 @@ def seller_dash():
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    """INSERT INTO market_items (title, description, price, category, condition, image_url, seller_id)
+                    """INSERT INTO market_items (title, description, price, category, condition, image, user_id)
                        VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                    (title, description, price, category, condition, image_url, session["user_id"]),
+                    (title, description, str(price), category, condition, image_path, session["user_id"]),
                 )
                 conn.commit()
         finally:
@@ -90,12 +90,13 @@ def seller_dash():
         return redirect(url_for("seller.seller_dash"))
 
     conn = get_db_connection()
+    rows = []
     try:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT id, title, price, image_url, status, created_at
+                """SELECT id, title, price, image, is_sold, created_at, brand, whatsapp
                    FROM market_items
-                   WHERE seller_id = %s
+                   WHERE user_id = %s
                    ORDER BY created_at DESC""",
                 (session["user_id"],),
             )
@@ -107,12 +108,11 @@ def seller_dash():
         {
             "id": r[0],
             "title": r[1],
-            "price": float(r[2]),
+            "price": float(r[2]) if r[2] else 0,
             "image": r[3],
-            "brand": None,
-            "is_sold": 1 if r[4] == "sold" else 0,
-            "status": r[4],
+            "is_sold": r[4],
             "created_at": r[5],
+            "brand": r[6],
         }
         for r in rows
     ]
@@ -122,10 +122,13 @@ def seller_dash():
 @bp.route("/seller/<int:seller_id>")
 def seller_profile(seller_id: int):
     conn = get_db_connection()
+    seller = None
+    rows = []
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT username, created_at FROM users WHERE id = %s", (seller_id,)
+                "SELECT display_name, email, whatsapp FROM public.users WHERE id = %s",
+                (seller_id,),
             )
             seller = cur.fetchone()
             if not seller:
@@ -134,9 +137,9 @@ def seller_profile(seller_id: int):
                     404,
                 )
             cur.execute(
-                """SELECT id, title, price, image_url
+                """SELECT id, title, price, image
                    FROM market_items
-                   WHERE seller_id = %s AND status = 'active'
+                   WHERE user_id = %s AND is_sold = 0
                    ORDER BY created_at DESC""",
                 (seller_id,),
             )
@@ -144,14 +147,13 @@ def seller_profile(seller_id: int):
     finally:
         close_db_connection(conn)
 
-    name = seller[0]
-    join_date = seller[1].strftime("%b %Y") if seller[1] else "Recently"
+    name = seller[0] or seller[1].split("@")[0]
 
     items = [
         {
             "id": r[0],
             "title": r[1],
-            "price": float(r[2]),
+            "price": float(r[2]) if r[2] else 0,
             "image": r[3],
         }
         for r in rows
@@ -159,7 +161,7 @@ def seller_profile(seller_id: int):
     return render_template(
         "seller_profile.html",
         name=name,
-        join_date=join_date,
-        whatsapp=None,
+        join_date="Campus Student",
+        whatsapp=seller[2],
         items=items,
     )

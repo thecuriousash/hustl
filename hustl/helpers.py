@@ -15,19 +15,22 @@ ADMIN_PASSWORD_HASH = (
 )
 
 
-def get_image_url(image_path: str | None) -> str | None:
+PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Crect fill='%231e1b4b' width='400' height='400'/%3E%3Ctext fill='%234c4a8a' font-size='24' x='50%25' y='50%25' text-anchor='middle' dy='.3em'%3ENo Image%3C/text%3E%3C/svg%3E"
+
+
+def get_image_url(image_path: str | None) -> str:
     if not image_path:
-        return None
+        return PLACEHOLDER
     bucket = current_app.config.get("STORAGE_BUCKET", "listing-images")
     supabase = current_app.config.get("supabase")
     if supabase is None:
-        return None
+        return PLACEHOLDER
     try:
         public_url = supabase.storage.from_(bucket).get_public_url(image_path)
         return public_url
     except Exception as exc:
         current_app.logger.error("Failed to get public URL for %s: %s", image_path, exc)
-        return None
+        return PLACEHOLDER
 
 
 def allowed_file(filename: str) -> bool:

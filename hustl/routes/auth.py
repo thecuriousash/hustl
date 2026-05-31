@@ -21,8 +21,9 @@ def login():
             if check_password_hash(ADMIN_PASSWORD_HASH, password):
                 session.permanent = True
                 session["user_id"] = 0
-                session["username"] = "admin"
+                session["display_name"] = "admin"
                 session["is_seller"] = False
+                session["is_verified"] = 0
                 session["is_admin"] = True
                 return redirect(url_for("admin.dashboard"))
             flash("Invalid credentials.", "error")
@@ -32,8 +33,8 @@ def login():
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT id, username, password_hash, is_seller FROM users WHERE username = %s",
-                    (username,),
+                    "SELECT id, display_name, password_hash, user_type, is_verified FROM public.users WHERE email = %s OR display_name = %s",
+                    (username, username),
                 )
                 user = cur.fetchone()
         finally:
@@ -42,8 +43,9 @@ def login():
         if user and check_password_hash(user[2], password):
             session.permanent = True
             session["user_id"] = user[0]
-            session["username"] = user[1]
-            session["is_seller"] = user[3]
+            session["display_name"] = user[1]
+            session["is_seller"] = user[3] == "seller"
+            session["is_verified"] = user[4] or 0
             return redirect(url_for("market.home"))
         flash("Invalid credentials.", "error")
         return render_template("auth.html", is_login=True)
@@ -54,12 +56,12 @@ def login():
 @bp.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
-        username = request.form.get("username", "").strip()
         email = request.form.get("email", "").strip()
+        username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
 
-        if not username or not email or not password:
-            flash("All fields are required.", "error")
+        if not email or not password:
+            flash("Email and password are required.", "error")
             return render_template("auth.html", is_login=False)
 
         if not EMAIL_RE.match(email):
@@ -74,18 +76,18 @@ def signup():
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT id FROM users WHERE username = %s OR email = %s",
-                    (username, email),
+                    "SELECT id FROM public.users WHERE email = %s",
+                    (email,),
                 )
                 existing = cur.fetchone()
                 if existing:
-                    flash("Username or email already taken.", "error")
+                    flash("Email already registered.", "error")
                     return render_template("auth.html", is_login=False)
 
                 pw_hash = generate_password_hash(password)
                 cur.execute(
-                    "INSERT INTO users (username, email, password_hash) VALUES (%s, %s, %s) RETURNING id",
-                    (username, email, pw_hash),
+                    "INSERT INTO public.users (email, display_name, password_hash) VALUES (%s, %s, %s) RETURNING id",
+                    (email, username or None, pw_hash),
                 )
                 user_id = cur.fetchone()[0]
                 conn.commit()
@@ -94,8 +96,9 @@ def signup():
 
         session.permanent = True
         session["user_id"] = user_id
-        session["username"] = username
+        session["display_name"] = username
         session["is_seller"] = False
+        session["is_verified"] = 0
         return redirect(url_for("market.home"))
 
     return render_template("auth.html", is_login=False)

@@ -49,13 +49,19 @@ def init_db() -> None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                CREATE TABLE IF NOT EXISTS users (
+                CREATE TABLE IF NOT EXISTS public.users (
                     id SERIAL PRIMARY KEY,
-                    username VARCHAR(80) UNIQUE NOT NULL,
-                    email VARCHAR(120) UNIQUE NOT NULL,
-                    password_hash VARCHAR(256) NOT NULL,
-                    is_seller BOOLEAN DEFAULT FALSE,
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    email TEXT UNIQUE NOT NULL,
+                    display_name TEXT,
+                    password_hash TEXT NOT NULL,
+                    user_type TEXT DEFAULT 'buyer',
+                    is_verified INTEGER DEFAULT 0,
+                    whatsapp TEXT,
+                    legal_name TEXT,
+                    reg_number TEXT,
+                    role TEXT DEFAULT 'user',
+                    id_proof_link TEXT,
+                    social_link TEXT
                 )
             """
             )
@@ -63,14 +69,17 @@ def init_db() -> None:
                 """
                 CREATE TABLE IF NOT EXISTS market_items (
                     id SERIAL PRIMARY KEY,
-                    title VARCHAR(200) NOT NULL,
+                    title TEXT NOT NULL,
                     description TEXT,
-                    price NUMERIC(10, 2) NOT NULL,
+                    price TEXT NOT NULL,
                     category VARCHAR(50),
                     condition VARCHAR(50),
-                    image_url VARCHAR(500),
-                    seller_id INTEGER REFERENCES users(id),
-                    status VARCHAR(20) DEFAULT 'active',
+                    brand TEXT,
+                    whatsapp TEXT,
+                    image TEXT,
+                    is_sold INTEGER DEFAULT 0,
+                    user_id INTEGER REFERENCES public.users(id),
+                    seller_brand TEXT,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 )
             """
@@ -79,28 +88,32 @@ def init_db() -> None:
                 """
                 CREATE TABLE IF NOT EXISTS lost_items (
                     id SERIAL PRIMARY KEY,
-                    title VARCHAR(200) NOT NULL,
+                    title TEXT NOT NULL,
                     description TEXT,
-                    image_url VARCHAR(500),
-                    status VARCHAR(20) DEFAULT 'open',
-                    submitted_by INTEGER REFERENCES users(id),
-                    contact_email VARCHAR(120),
+                    location TEXT,
+                    custody TEXT,
+                    image TEXT,
+                    is_recovered INTEGER DEFAULT 0,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 )
             """
             )
-            # Migrate existing tables that may lack columns added later
-            _add_column_if_not_exists(cur, "market_items", "description", "TEXT")
-            _add_column_if_not_exists(cur, "market_items", "seller_id", "INTEGER REFERENCES users(id)")
+            # Migration helpers for columns that may exist in some versions
+            _add_column_if_not_exists(cur, "market_items", "image", "TEXT")
             _add_column_if_not_exists(cur, "market_items", "image_url", "VARCHAR(500)")
             _add_column_if_not_exists(cur, "market_items", "status", "VARCHAR(20) DEFAULT 'active'")
             _add_column_if_not_exists(cur, "market_items", "created_at", "TIMESTAMP WITH TIME ZONE DEFAULT NOW()")
-            _add_column_if_not_exists(cur, "market_items", "category", "VARCHAR(50)")
-            _add_column_if_not_exists(cur, "market_items", "condition", "VARCHAR(50)")
+            _add_column_if_not_exists(cur, "market_items", "seller_id", "INTEGER REFERENCES public.users(id)")
+            _add_column_if_not_exists(cur, "market_items", "brand", "TEXT")
+            _add_column_if_not_exists(cur, "lost_items", "image", "TEXT")
             _add_column_if_not_exists(cur, "lost_items", "image_url", "VARCHAR(500)")
             _add_column_if_not_exists(cur, "lost_items", "status", "VARCHAR(20) DEFAULT 'open'")
+            _add_column_if_not_exists(cur, "lost_items", "is_recovered", "INTEGER DEFAULT 0")
+            _add_column_if_not_exists(cur, "lost_items", "location", "TEXT")
+            _add_column_if_not_exists(cur, "lost_items", "custody", "TEXT")
             _add_column_if_not_exists(cur, "lost_items", "created_at", "TIMESTAMP WITH TIME ZONE DEFAULT NOW()")
-            _add_column_if_not_exists(cur, "users", "created_at", "TIMESTAMP WITH TIME ZONE DEFAULT NOW()")
+            _add_column_if_not_exists(cur, "lost_items", "submitted_by", "INTEGER REFERENCES public.users(id)")
+            _add_column_if_not_exists(cur, "lost_items", "contact_email", "TEXT")
             conn.commit()
     finally:
         close_db_connection(conn)
@@ -110,7 +123,7 @@ def _add_column_if_not_exists(cur, table: str, column: str, definition: str) -> 
     cur.execute(
         """
         SELECT 1 FROM information_schema.columns
-        WHERE table_name = %s AND column_name = %s
+        WHERE table_schema = 'public' AND table_name = %s AND column_name = %s
         """,
         (table, column),
     )

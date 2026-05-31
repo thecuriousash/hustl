@@ -27,20 +27,20 @@ def dashboard():
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, username, email FROM users WHERE is_seller = TRUE ORDER BY created_at DESC"
+                "SELECT id, display_name, email FROM public.users WHERE user_type = 'seller' ORDER BY id DESC"
             )
             pending_users = [
                 {"id": r[0], "display_name": r[1], "email": r[2]}
                 for r in cur.fetchall()
             ]
-            cur.execute("SELECT COUNT(*) FROM users")
+            cur.execute("SELECT COUNT(*) FROM public.users")
             total_users = cur.fetchone()[0]
-            cur.execute("SELECT id, title, price, image_url FROM market_items ORDER BY created_at DESC")
+            cur.execute("SELECT id, title, price, image FROM market_items ORDER BY created_at DESC")
             market_oversight = [
-                {"id": r[0], "title": r[1], "price": float(r[2]), "image": r[3]}
+                {"id": r[0], "title": r[1], "price": float(r[2]) if r[2] else 0, "image": r[3]}
                 for r in cur.fetchall()
             ]
-            cur.execute("SELECT COUNT(*) FROM lost_items WHERE status = 'open'")
+            cur.execute("SELECT COUNT(*) FROM lost_items WHERE is_recovered = 0")
             active_reports = cur.fetchone()[0]
     finally:
         close_db_connection(conn)
@@ -63,7 +63,7 @@ def users():
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, username, email, is_seller, created_at FROM users ORDER BY created_at DESC"
+                "SELECT id, display_name, email, user_type, is_verified FROM public.users ORDER BY id DESC"
             )
             rows = cur.fetchall()
     finally:
@@ -73,9 +73,9 @@ def users():
         {
             "display_name": r[1],
             "email": r[2],
-            "user_type": "seller" if r[3] else "buyer",
-            "is_verified": 1,
-            "created_at": r[4],
+            "user_type": r[3] or "buyer",
+            "is_verified": r[4] or 0,
+            "created_at": None,
             "id": r[0],
         }
         for r in rows
@@ -89,7 +89,8 @@ def delete_user(user_id: int):
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+            cur.execute("DELETE FROM market_items WHERE user_id = %s", (user_id,))
+            cur.execute("DELETE FROM public.users WHERE id = %s", (user_id,))
             conn.commit()
     finally:
         close_db_connection(conn)
@@ -104,7 +105,7 @@ def approve_item(item_id: int):
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE market_items SET status = 'active' WHERE id = %s",
+                "UPDATE market_items SET is_sold = 0 WHERE id = %s",
                 (item_id,),
             )
             conn.commit()
@@ -121,7 +122,7 @@ def reject_item(item_id: int):
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE market_items SET status = 'rejected' WHERE id = %s",
+                "UPDATE market_items SET is_sold = 1 WHERE id = %s",
                 (item_id,),
             )
             conn.commit()
@@ -145,9 +146,10 @@ def all_listings():
     try:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT m.id, m.title, m.price, m.image_url, m.status, m.created_at, u.username
+                """SELECT m.id, m.title, m.price, m.image, m.is_sold, m.created_at,
+                          COALESCE(u.display_name, u.email), u.legal_name, m.brand
                    FROM market_items m
-                   JOIN users u ON m.seller_id = u.id
+                   LEFT JOIN public.users u ON m.user_id = u.id
                    ORDER BY m.created_at DESC"""
             )
             rows = cur.fetchall()
@@ -158,13 +160,13 @@ def all_listings():
         {
             "id": r[0],
             "title": r[1],
-            "price": float(r[2]),
+            "price": float(r[2]) if r[2] else 0,
             "image": r[3],
-            "status": r[4],
+            "is_sold": r[4],
             "created_at": r[5],
-            "user_display": r[6],
-            "legal_name": "Student",
-            "brand": None,
+            "user_display": r[6] or "Unknown",
+            "legal_name": r[7] or "Student",
+            "brand": r[8],
         }
         for r in rows
     ]
