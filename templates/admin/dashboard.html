@@ -39,7 +39,7 @@
                 &rarr;
             </div>
         </a>
-        <a href="/admin/manage-items" class="glass-card p-10 rounded-[40px] flex items-center justify-between group">
+        <a href="/admin/listings" class="glass-card p-10 rounded-[40px] flex items-center justify-between group">
             <div>
                 <h3 class="font-brand text-2xl font-bold italic mb-2 group-hover:text-indigo-400 transition-colors">
                     Market Moderation.</h3>
@@ -67,8 +67,11 @@
                                 <p class="text-[10px] text-slate-500">{{ u.email }}</p>
                             </td>
                             <td class="py-4 text-right">
-                                <a href="/admin/verify/{{ u.id }}"
-                                    class="bg-green-500/10 text-green-500 px-4 py-2 rounded-lg text-[10px] font-bold hover:bg-green-500 hover:text-white transition-all tracking-widest uppercase">Verify</a>
+                                <form action="/admin/verify/{{ u.id }}" method="POST">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit"
+                                        class="bg-green-500/10 text-green-500 px-4 py-2 rounded-lg text-[10px] font-bold hover:bg-green-500 hover:text-white transition-all tracking-widest uppercase">Verify</button>
+                                </form>
                             </td>
                         </tr>
                         {% endfor %}
