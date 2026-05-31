@@ -97,6 +97,7 @@ def init_db() -> None:
                     whatsapp TEXT,
                     image TEXT,
                     is_sold INTEGER DEFAULT 0,
+                    is_approved INTEGER DEFAULT 1,
                     user_id INTEGER REFERENCES public.users(id),
                     seller_brand TEXT,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -124,6 +125,7 @@ def init_db() -> None:
             _add_column_if_not_exists(cur, "market_items", "created_at", "TIMESTAMP WITH TIME ZONE DEFAULT NOW()")
             _add_column_if_not_exists(cur, "market_items", "seller_id", "INTEGER REFERENCES public.users(id)")
             _add_column_if_not_exists(cur, "market_items", "brand", "TEXT")
+            _add_column_if_not_exists(cur, "market_items", "is_approved", "INTEGER DEFAULT 1")
             _add_column_if_not_exists(cur, "lost_items", "image", "TEXT")
             _add_column_if_not_exists(cur, "lost_items", "image_url", "VARCHAR(500)")
             _add_column_if_not_exists(cur, "lost_items", "status", "VARCHAR(20) DEFAULT 'open'")
@@ -133,6 +135,9 @@ def init_db() -> None:
             _add_column_if_not_exists(cur, "lost_items", "created_at", "TIMESTAMP WITH TIME ZONE DEFAULT NOW()")
             _add_column_if_not_exists(cur, "lost_items", "submitted_by", "INTEGER REFERENCES public.users(id)")
             _add_column_if_not_exists(cur, "lost_items", "contact_email", "TEXT")
+            _add_column_if_not_exists(cur, "lost_items", "claimant_name", "TEXT")
+            _add_column_if_not_exists(cur, "lost_items", "claimant_proof", "TEXT")
+            _add_column_if_not_exists(cur, "lost_items", "claim_status", "VARCHAR(20) DEFAULT 'none'")
             conn.commit()
     finally:
         close_db_connection(conn)

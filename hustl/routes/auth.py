@@ -43,7 +43,7 @@ def login():
         if user and check_password_hash(user[2], password):
             session.permanent = True
             session["user_id"] = user[0]
-            session["display_name"] = user[1]
+            session["display_name"] = user[1] or email.split("@")[0]
             session["is_seller"] = user[3] == "seller"
             session["is_verified"] = user[4] or 0
             return redirect(url_for("market.home"))
@@ -57,7 +57,7 @@ def login():
 def signup():
     if request.method == "POST":
         email = request.form.get("email", "").strip()
-        username = request.form.get("username", "").strip()
+        display_name = request.form.get("display_name", "").strip()
         password = request.form.get("password", "")
 
         if not email or not password:
@@ -71,6 +71,9 @@ def signup():
         if len(password) < 8:
             flash("Password must be at least 8 characters.", "error")
             return render_template("auth.html", is_login=False)
+
+        if not display_name:
+            display_name = email.split("@")[0]
 
         conn = get_db_connection()
         try:
@@ -87,7 +90,7 @@ def signup():
                 pw_hash = generate_password_hash(password)
                 cur.execute(
                     "INSERT INTO public.users (email, display_name, password_hash) VALUES (%s, %s, %s) RETURNING id",
-                    (email, username or None, pw_hash),
+                    (email, display_name, pw_hash),
                 )
                 user_id = cur.fetchone()[0]
                 conn.commit()
@@ -96,7 +99,7 @@ def signup():
 
         session.permanent = True
         session["user_id"] = user_id
-        session["display_name"] = username
+        session["display_name"] = display_name
         session["is_seller"] = False
         session["is_verified"] = 0
         return redirect(url_for("market.home"))

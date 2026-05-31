@@ -171,7 +171,7 @@
                 {% endif %}
                 <div
                     class="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 border border-white/10 flex items-center justify-center text-[10px] font-black uppercase shadow-lg shadow-indigo-500/20">
-                    {{ session.get('display_name')[0] }}
+                    {{ (session.get('display_name') or '?')[0] }}
                 </div>
                 <a href="/logout"
                     class="text-xs font-bold text-red-500/70 hover:text-red-500 transition-colors uppercase tracking-tighter">Exit</a>
@@ -221,7 +221,7 @@
 
             <h2 class="font-brand text-2xl font-bold italic mb-6">Create Post</h2>
             <div class="space-y-4">
-                <button onclick="openForm('product')"
+                <a href="/seller-dash"
                     class="w-full glass-card p-6 rounded-2xl flex items-center gap-4 group">
                     <div
                         class="w-12 h-12 rounded-xl bg-indigo-500/20 flex items-center justify-center text-indigo-400 group-hover:bg-indigo-500 group-hover:text-white transition-all">
@@ -233,7 +233,7 @@
                         <p class="font-bold text-sm">Sell Something</p>
                         <p class="text-xs text-slate-500 italic">List a gadget, book, or gear</p>
                     </div>
-                </button>
+                </a>
 
                 <button onclick="openForm('lost')"
                     class="w-full glass-card p-6 rounded-2xl flex items-center gap-4 group">
@@ -263,7 +263,7 @@
                 </svg>
             </button>
             <h2 class="font-brand text-2xl font-bold italic mb-6">List New Product</h2>
-            <form action="/market" method="POST" enctype="multipart/form-data" class="space-y-6">
+            <form action="/seller-dash" method="POST" enctype="multipart/form-data" class="space-y-6">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div>
                     <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Title</label>

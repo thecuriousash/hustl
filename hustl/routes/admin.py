@@ -23,11 +23,12 @@ def dashboard():
     total_users = 0
     market_oversight = []
     active_reports = 0
+    pending_items = []
     claim_requests = []
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, display_name, email FROM public.users WHERE user_type = 'seller' ORDER BY id DESC"
+                "SELECT id, display_name, email FROM public.users WHERE user_type = 'seller' AND is_verified = 0 ORDER BY id DESC"
             )
             pending_users = [
                 {"id": r[0], "display_name": r[1], "email": r[2]}
@@ -35,13 +36,40 @@ def dashboard():
             ]
             cur.execute("SELECT COUNT(*) FROM public.users")
             total_users = cur.fetchone()[0]
-            cur.execute("SELECT id, title, price, image FROM market_items ORDER BY created_at DESC")
+            cur.execute(
+                "SELECT id, title, price, image FROM market_items WHERE is_sold = 0 ORDER BY created_at DESC"
+            )
             market_oversight = [
                 {"id": r[0], "title": r[1], "price": float(r[2]) if r[2] else 0, "image": r[3]}
                 for r in cur.fetchall()
             ]
             cur.execute("SELECT COUNT(*) FROM lost_items WHERE is_recovered = 0")
             active_reports = cur.fetchone()[0]
+
+            # Pending approval items (not yet approved by admin)
+            cur.execute(
+                """SELECT m.id, m.title, m.price, m.image, COALESCE(u.display_name, u.email)
+                   FROM market_items m
+                   LEFT JOIN public.users u ON m.user_id = u.id
+                   WHERE m.is_approved = 0
+                   ORDER BY m.created_at DESC"""
+            )
+            pending_items = [
+                {"id": r[0], "title": r[1], "price": float(r[2]) if r[2] else 0, "image": r[3], "seller": r[4] or "Unknown"}
+                for r in cur.fetchall()
+            ]
+
+            # Claim requests (pending admin review)
+            cur.execute(
+                """SELECT id, title, claimant_name, claimant_proof
+                   FROM lost_items
+                   WHERE claim_status = 'pending'
+                   ORDER BY created_at DESC"""
+            )
+            claim_requests = [
+                {"id": r[0], "item_title": r[1], "requester_email": r[2] or "Unknown", "proof_details": r[3] or ""}
+                for r in cur.fetchall()
+            ]
     finally:
         close_db_connection(conn)
 
@@ -51,6 +79,7 @@ def dashboard():
         total_users=total_users,
         market_oversight=market_oversight,
         active_reports=active_reports,
+        pending_items=pending_items,
         claim_requests=claim_requests,
     )
 
@@ -105,14 +134,14 @@ def approve_item(item_id: int):
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE market_items SET is_sold = 0 WHERE id = %s",
+                "UPDATE market_items SET is_approved = 1 WHERE id = %s",
                 (item_id,),
             )
             conn.commit()
     finally:
         close_db_connection(conn)
     flash("Item approved.")
-    return redirect(url_for("admin.pending_approval"))
+    return redirect(url_for("admin.dashboard"))
 
 
 @bp.route("/reject-item/<int:item_id>", methods=["POST"])
@@ -121,15 +150,46 @@ def reject_item(item_id: int):
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
+            cur.execute("DELETE FROM market_items WHERE id = %s", (item_id,))
+            conn.commit()
+    finally:
+        close_db_connection(conn)
+    flash("Item rejected and removed.")
+    return redirect(url_for("admin.dashboard"))
+
+
+@bp.route("/approve-claim/<int:item_id>", methods=["POST"])
+@admin_required
+def approve_claim(item_id: int):
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
             cur.execute(
-                "UPDATE market_items SET is_sold = 1 WHERE id = %s",
+                "UPDATE lost_items SET is_recovered = 1, claim_status = 'approved' WHERE id = %s",
                 (item_id,),
             )
             conn.commit()
     finally:
         close_db_connection(conn)
-    flash("Item rejected.")
-    return redirect(url_for("admin.pending_approval"))
+    flash("Claim approved, item marked as recovered.")
+    return redirect(url_for("admin.dashboard"))
+
+
+@bp.route("/reject-claim/<int:item_id>", methods=["POST"])
+@admin_required
+def reject_claim(item_id: int):
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE lost_items SET claim_status = 'rejected' WHERE id = %s",
+                (item_id,),
+            )
+            conn.commit()
+    finally:
+        close_db_connection(conn)
+    flash("Claim rejected.")
+    return redirect(url_for("admin.dashboard"))
 
 
 @bp.route("/verify/<int:user_id>", methods=["POST"])

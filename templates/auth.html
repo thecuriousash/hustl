@@ -24,6 +24,14 @@
                     class="w-full bg-slate-900 border border-white/5 rounded-2xl px-6 py-4 text-sm outline-none focus:border-indigo-500 transition-all mt-1">
             </div>
 
+            {% if not is_login %}
+            <div>
+                <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Display Name</label>
+                <input type="text" name="display_name" required placeholder="e.g., Akshita S."
+                    class="w-full bg-slate-900 border border-white/5 rounded-2xl px-6 py-4 text-sm outline-none focus:border-indigo-500 transition-all mt-1">
+            </div>
+            {% endif %}
+
             <div>
                 <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Password</label>
                 <input type="password" name="password" required placeholder="••••••••"

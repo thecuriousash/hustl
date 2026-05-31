@@ -22,17 +22,29 @@ bp = Blueprint("seller", __name__, url_prefix="")
 @login_required
 def seller_onboarding():
     if request.method == "POST":
+        legal_name = request.form.get("legal_name", "").strip()
+        display_name = request.form.get("display_name", "").strip()
+        reg_number = request.form.get("reg_number", "").strip()
+        whatsapp = request.form.get("whatsapp", "").strip()
+        id_proof_link = request.form.get("id_proof_link", "").strip()
+        social_link = request.form.get("social_link", "").strip()
+
         conn = get_db_connection()
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE public.users SET user_type = 'seller' WHERE id = %s",
-                    (session["user_id"],),
+                    """UPDATE public.users SET
+                       user_type = 'seller', legal_name = %s, display_name = %s,
+                       reg_number = %s, whatsapp = %s, id_proof_link = %s, social_link = %s
+                       WHERE id = %s""",
+                    (legal_name, display_name or None, reg_number, whatsapp, id_proof_link, social_link or None, session["user_id"]),
                 )
                 conn.commit()
         finally:
             close_db_connection(conn)
         session["is_seller"] = True
+        if display_name:
+            session["display_name"] = display_name
         return redirect(url_for("seller.seller_dash"))
     return render_template("seller_onboarding.html")
 
@@ -49,6 +61,8 @@ def seller_dash():
         price = request.form.get("price", type=float)
         category = request.form.get("category", "").strip()
         condition = request.form.get("condition", "").strip()
+        whatsapp = request.form.get("whatsapp", "").strip()
+        brand = request.form.get("brand", "").strip()
         file = request.files.get("image")
 
         if not title or not price:
@@ -78,10 +92,11 @@ def seller_dash():
         conn = get_db_connection()
         try:
             with conn.cursor() as cur:
+                is_approved = 1 if session.get("is_verified") else 0
                 cur.execute(
-                    """INSERT INTO market_items (title, description, price, category, condition, image, user_id)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                    (title, description, str(price), category, condition, image_path, session["user_id"]),
+                    """INSERT INTO market_items (title, description, price, category, condition, brand, whatsapp, image, user_id, is_approved)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                    (title, description, str(price), category, condition, brand or None, whatsapp or None, image_path, session["user_id"], is_approved),
                 )
                 conn.commit()
         finally:
@@ -94,7 +109,7 @@ def seller_dash():
     try:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT id, title, price, image, is_sold, created_at, brand, whatsapp
+                """SELECT id, title, price, image, is_sold, created_at, brand, whatsapp, is_approved
                    FROM market_items
                    WHERE user_id = %s
                    ORDER BY created_at DESC""",
@@ -113,6 +128,7 @@ def seller_dash():
             "is_sold": r[4],
             "created_at": r[5],
             "brand": r[6],
+            "is_approved": r[8],
         }
         for r in rows
     ]
