@@ -68,7 +68,7 @@ def _init_pool():
     global _pool
     if DATABASE_URL and _pool is None:
         try:
-            _pool = ThreadedConnectionPool(2, 20, DATABASE_URL)
+            _pool = ThreadedConnectionPool(2, 10, DATABASE_URL, connect_timeout=5)
         except Exception as e:
             app.logger.warning("Failed to create connection pool: %s. Falling back to direct connections.", e)
 
@@ -83,7 +83,7 @@ def get_db_connection():
         conn = _pool.getconn()
         conn.autocommit = False
         return conn
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = psycopg2.connect(DATABASE_URL, connect_timeout=5)
     conn.autocommit = False
     return conn
 
@@ -93,7 +93,7 @@ def close_db_connection(conn):
         if _pool:
             _pool.putconn(conn)
         else:
-            close_db_connection(conn)
+            conn.close()
 
 
 def allowed_file(filename):
