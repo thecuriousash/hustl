@@ -161,7 +161,7 @@
         </div>
 
         <div class="flex items-center gap-4">
-            {% if session.get('email') %}
+            {% if session.get('display_name') %}
             <div class="flex items-center gap-3">
                 {% if session.get('is_admin') %}
                 <a href="/admin"
@@ -171,7 +171,7 @@
                 {% endif %}
                 <div
                     class="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 border border-white/10 flex items-center justify-center text-[10px] font-black uppercase shadow-lg shadow-indigo-500/20">
-                    {{ session.get('email')[0] }}
+                    {{ session.get('display_name')[0] }}
                 </div>
                 <a href="/logout"
                     class="text-xs font-bold text-red-500/70 hover:text-red-500 transition-colors uppercase tracking-tighter">Exit</a>
@@ -200,7 +200,7 @@
     </main>
 
     <!-- Floating Action Button -->
-    {% if session.get('email') %}
+    {% if session.get('display_name') %}
     <button onclick="toggleModal('mainActionModal')"
         class="fixed bottom-8 right-8 w-14 h-14 btn-primary rounded-full shadow-2xl flex items-center justify-center text-white z-40 hover:rotate-90 transition-transform duration-300">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

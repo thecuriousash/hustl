@@ -10,14 +10,14 @@ bp = Blueprint("auth", __name__, url_prefix="")
 @bp.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        username = request.form.get("username", "").strip()
+        email = request.form.get("email", "").strip()
         password = request.form.get("password", "")
 
-        if not username or not password:
-            flash("Username and password are required.", "error")
+        if not email or not password:
+            flash("Email and password are required.", "error")
             return render_template("auth.html", is_login=True)
 
-        if username == ADMIN_USERNAME:
+        if email == ADMIN_USERNAME:
             if check_password_hash(ADMIN_PASSWORD_HASH, password):
                 session.permanent = True
                 session["user_id"] = 0
@@ -34,7 +34,7 @@ def login():
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT id, display_name, password_hash, user_type, is_verified FROM public.users WHERE email = %s OR display_name = %s",
-                    (username, username),
+                    (email, email),
                 )
                 user = cur.fetchone()
         finally:
