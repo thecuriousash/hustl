@@ -5,7 +5,7 @@ from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
-from .config import Config
+from .config import Config, validate_env
 from .db import init_supabase, init_db
 
 csrf = CSRFProtect()
@@ -32,6 +32,13 @@ def create_app() -> Flask:
 
     _register_blueprints(app)
     _register_handlers(app)
+
+    # Validate critical env vars
+    try:
+        validate_env()
+    except RuntimeError as e:
+        app.logger.error("Environment validation failed: %s", e)
+        # Don't crash — accept and serve with degraded state
 
     # Lazy DB init — won't crash if DB is unreachable
     with app.app_context():

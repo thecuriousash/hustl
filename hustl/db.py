@@ -10,15 +10,28 @@ supabase: Client | None = None
 
 def init_supabase(app) -> None:
     global supabase
-    supabase = create_client(app.config["SUPABASE_URL"], app.config["SUPABASE_KEY"])
-    app.config["supabase"] = supabase
+    url = app.config.get("SUPABASE_URL")
+    key = app.config.get("SUPABASE_KEY")
+    if not url or not key:
+        app.logger.warning("SUPABASE_URL or SUPABASE_KEY not set — storage disabled")
+        app.config["supabase"] = None
+        return
+    try:
+        supabase = create_client(url, key)
+        app.config["supabase"] = supabase
+    except Exception as exc:
+        app.logger.error("Failed to init Supabase client: %s", exc)
+        app.config["supabase"] = None
     app.config["STORAGE_BUCKET"] = app.config.get("STORAGE_BUCKET", "listing-images")
 
 
-def _get_pool() -> pypool.ThreadedConnectionPool:
+def _get_pool() -> pypool.ThreadedConnectionPool | None:
     global _pool
     if _pool is None:
         db_url = current_app.config.get("DATABASE_URL") or os.environ.get("DATABASE_URL")
+        if not db_url:
+            current_app.logger.error("DATABASE_URL not set — cannot create connection pool")
+            return None
         _pool = pypool.ThreadedConnectionPool(
             2, 10, db_url, connect_timeout=5
         )
@@ -27,12 +40,18 @@ def _get_pool() -> pypool.ThreadedConnectionPool:
 
 def get_db_connection():
     pool = _get_pool()
+    if pool is None:
+        raise RuntimeError("Database pool not available (DATABASE_URL not set)")
     return pool.getconn()
 
 
 def close_db_connection(conn):
     global _pool
     if _pool is None:
+        try:
+            conn.close()
+        except Exception:
+            pass
         return
     try:
         _pool.putconn(conn)
