@@ -63,7 +63,7 @@
                             {% if item.is_sold == 1 %}
                             <span class="text-xs font-bold text-red-500/70 uppercase">Sold</span>
                             {% elif item.is_approved == 0 %}
-                            <span class="text-xs font-bold text-amber-500/70 uppercase">Pending</span>
+                            <span class="text-xs font-bold text-amber-500/70 uppercase" title="Awaiting admin approval">Pending</span>
                             {% else %}
                             <span class="text-xs font-bold text-emerald-500/70 uppercase">Live</span>
                             {% endif %}
@@ -91,6 +91,9 @@
             <p class="text-slate-500 italic mb-6">Your inventory is empty.</p>
             <button onclick="toggleModal('productFormModal')" class="text-indigo-400 font-bold hover:underline">List
                 your first item &rarr;</button>
+            <p class="text-[10px] text-slate-600 mt-4 max-w-xs mx-auto">
+                New sellers' items require admin approval before appearing in the marketplace
+            </p>
         </div>
         {% endif %}
     </div>
