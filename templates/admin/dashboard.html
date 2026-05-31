@@ -53,7 +53,7 @@
     </div>
 
     <!-- Quick Review: Pending Sellers -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
         <div class="glass rounded-[40px] p-8">
             <h2 class="font-brand text-2xl font-bold italic mb-6">Pending Sellers.</h2>
             {% if pending_users %}
@@ -84,6 +84,42 @@
         </div>
 
         <div class="glass rounded-[40px] p-8">
+            <h2 class="font-brand text-2xl font-bold italic mb-6 text-indigo-400">Pending Items.</h2>
+            {% if pending_items %}
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <tbody class="divide-y divide-white/5">
+                        {% for item in pending_items[:5] %}
+                        <tr>
+                            <td class="py-4">
+                                <p class="font-bold text-sm">{{ item.title }}</p>
+                                <p class="text-[10px] text-slate-500">by {{ item.seller }}</p>
+                            </td>
+                            <td class="py-4 text-right align-top">
+                                <div class="flex flex-col gap-2">
+                                    <form action="/admin/approve-item/{{ item.id }}" method="POST">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit"
+                                            class="bg-green-500/10 text-green-500 px-3 py-1.5 rounded-lg text-[9px] font-bold hover:bg-green-500 hover:text-white transition-all tracking-widest uppercase w-full">Approve</button>
+                                    </form>
+                                    <form action="/admin/reject-item/{{ item.id }}" method="POST">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit"
+                                            class="bg-red-500/10 text-red-500 px-3 py-1.5 rounded-lg text-[9px] font-bold hover:bg-red-500 hover:text-white transition-all tracking-widest uppercase w-full">Reject</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-slate-500 italic text-[11px] py-4">All items approved.</p>
+            {% endif %}
+        </div>
+
+        <div class="glass rounded-[40px] p-8">
             <h2 class="font-brand text-2xl font-bold italic mb-6 text-amber-500">Claim Requests.</h2>
             {% if claim_requests %}
             <div class="overflow-x-auto">
@@ -101,10 +137,16 @@
                             </td>
                             <td class="py-4 text-right align-top">
                                 <div class="flex flex-col gap-2">
-                                    <a href="/admin/approve-claim/{{ c.id }}"
-                                        class="bg-green-500/10 text-green-500 px-4 py-2 rounded-lg text-[9px] font-black hover:bg-green-500 hover:text-white transition-all tracking-widest uppercase text-center">Approve</a>
-                                    <a href="/admin/reject-claim/{{ c.id }}"
-                                        class="bg-red-500/10 text-red-500 px-4 py-2 rounded-lg text-[9px] font-black hover:bg-red-500 hover:text-white transition-all tracking-widest uppercase text-center">Reject</a>
+                                    <form action="/admin/approve-claim/{{ c.id }}" method="POST">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit"
+                                            class="bg-green-500/10 text-green-500 px-3 py-1.5 rounded-lg text-[9px] font-bold hover:bg-green-500 hover:text-white transition-all tracking-widest uppercase w-full">Approve</button>
+                                    </form>
+                                    <form action="/admin/reject-claim/{{ c.id }}" method="POST">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit"
+                                            class="bg-red-500/10 text-red-500 px-3 py-1.5 rounded-lg text-[9px] font-bold hover:bg-red-500 hover:text-white transition-all tracking-widest uppercase w-full">Reject</button>
+                                    </form>
                                 </div>
                             </td>
                         </tr>

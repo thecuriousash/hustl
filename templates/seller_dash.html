@@ -62,6 +62,8 @@
                         <td class="py-6">
                             {% if item.is_sold == 1 %}
                             <span class="text-xs font-bold text-red-500/70 uppercase">Sold</span>
+                            {% elif item.is_approved == 0 %}
+                            <span class="text-xs font-bold text-amber-500/70 uppercase">Pending</span>
                             {% else %}
                             <span class="text-xs font-bold text-emerald-500/70 uppercase">Live</span>
                             {% endif %}

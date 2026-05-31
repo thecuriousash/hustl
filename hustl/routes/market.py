@@ -32,8 +32,8 @@ def home():
                 """SELECT m.id, m.title, m.price, m.image, m.brand, m.is_sold, COALESCE(u.display_name, u.email)
                    FROM market_items m
                    LEFT JOIN public.users u ON m.user_id = u.id
-                   WHERE m.is_sold = 0
-                   ORDER BY m.created_at DESC LIMIT 6"""
+                    WHERE m.is_sold = 0 AND m.is_approved = 1
+                    ORDER BY m.created_at DESC LIMIT 6"""
             )
             rows = cur.fetchall()
     finally:
@@ -75,7 +75,7 @@ def market():
         with conn.cursor() as cur:
             if category:
                 cur.execute(
-                    "SELECT COUNT(*) FROM market_items WHERE is_sold = 0 AND category = %s",
+                    "SELECT COUNT(*) FROM market_items WHERE is_sold = 0 AND is_approved = 1 AND category = %s",
                     (category,),
                 )
                 total_count = cur.fetchone()[0]
@@ -84,7 +84,7 @@ def market():
                               COALESCE(u.display_name, u.email)
                        FROM market_items m
                        LEFT JOIN public.users u ON m.user_id = u.id
-                       WHERE m.is_sold = 0 AND m.category = %s
+                       WHERE m.is_sold = 0 AND m.is_approved = 1 AND m.category = %s
                        ORDER BY m.created_at DESC LIMIT %s OFFSET %s""",
                     (category, per_page, offset),
                 )
@@ -209,7 +209,7 @@ def search():
                 like_q = f"%{query}%"
                 cur.execute(
                     """SELECT COUNT(*) FROM market_items
-                       WHERE is_sold = 0 AND (title ILIKE %s OR description ILIKE %s)""",
+                       WHERE is_sold = 0 AND is_approved = 1 AND (title ILIKE %s OR description ILIKE %s)""",
                     (like_q, like_q),
                 )
                 total_count = cur.fetchone()[0]
@@ -218,13 +218,13 @@ def search():
                               COALESCE(u.display_name, u.email)
                        FROM market_items m
                        LEFT JOIN public.users u ON m.user_id = u.id
-                       WHERE m.is_sold = 0 AND (m.title ILIKE %s OR m.description ILIKE %s)
+                       WHERE m.is_sold = 0 AND is_approved = 1 AND (m.title ILIKE %s OR m.description ILIKE %s)
                        ORDER BY m.created_at DESC LIMIT %s OFFSET %s""",
                     (like_q, like_q, per_page, offset),
                 )
             else:
                 cur.execute(
-                    "SELECT COUNT(*) FROM market_items WHERE is_sold = 0"
+                    "SELECT COUNT(*) FROM market_items WHERE is_sold = 0 AND is_approved = 1"
                 )
                 total_count = cur.fetchone()[0]
                 cur.execute(
@@ -232,7 +232,7 @@ def search():
                               COALESCE(u.display_name, u.email)
                        FROM market_items m
                        LEFT JOIN public.users u ON m.user_id = u.id
-                       WHERE m.is_sold = 0
+                       WHERE m.is_sold = 0 AND is_approved = 1
                        ORDER BY m.created_at DESC LIMIT %s OFFSET %s""",
                     (per_page, offset),
                 )

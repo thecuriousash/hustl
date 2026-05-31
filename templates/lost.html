@@ -40,8 +40,12 @@
                 <img src="{{ get_image_url(item.image) }}" alt="{{ item.title }}"
                     class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 opacity-80 group-hover:opacity-100">
                 <div
-                    class="absolute top-4 left-4 bg-amber-500 text-black text-[9px] font-black px-2 py-1 rounded-sm uppercase tracking-widest italic">
-                    Status: Lost
+                    class="absolute top-4 left-4 px-2 py-1 rounded-sm text-[9px] font-black uppercase tracking-widest italic
+                        {% if item.is_recovered %}bg-green-500 text-black{% elif item.claim_status == 'pending' %}bg-yellow-500 text-black{% elif item.claim_status == 'rejected' %}bg-red-500 text-white{% else %}bg-amber-500 text-black{% endif %}">
+                    {% if item.is_recovered %}Recovered
+                    {% elif item.claim_status == 'pending' %}Claim Pending
+                    {% elif item.claim_status == 'rejected' %}Claim Rejected
+                    {% else %}Status: Lost{% endif %}
                 </div>
             </div>
             <div class="p-6">
@@ -70,10 +74,25 @@
                     "{{ item.description }}"
                 </p>
 
+                {% if not item.is_recovered and item.claim_status == 'none' %}
                 <button onclick="openClaimModal('{{ item.id }}', '{{ item.title }}')"
                     class="w-full py-3 rounded-xl border border-white/5 text-[10px] font-bold uppercase tracking-widest hover:bg-white hover:text-black transition-all">
                     Claim Item
                 </button>
+                {% elif item.claim_status == 'pending' %}
+                <div class="w-full py-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 text-[10px] font-bold uppercase tracking-widest text-center">
+                    Under Review
+                </div>
+                {% elif item.claim_status == 'approved' or item.is_recovered %}
+                <div class="w-full py-3 rounded-xl bg-green-500/10 border border-green-500/20 text-green-500 text-[10px] font-bold uppercase tracking-widest text-center">
+                    Recovered
+                </div>
+                {% elif item.claim_status == 'rejected' %}
+                <button onclick="openClaimModal('{{ item.id }}', '{{ item.title }}')"
+                    class="w-full py-3 rounded-xl border border-white/5 text-[10px] font-bold uppercase tracking-widest hover:bg-white hover:text-black transition-all">
+                    Reclaim Item
+                </button>
+                {% endif %}
             </div>
         </div>
         {% else %}
@@ -97,6 +116,12 @@
             <form action="/claim-item" method="POST" class="space-y-6">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="item_id" id="claimItemId">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Your Name</label>
+                    <input type="text" name="claimant_name" required
+                        placeholder="e.g., Akshita S."
+                        class="w-full bg-slate-900 border border-white/5 rounded-xl px-4 py-3 text-sm outline-none focus:border-indigo-500 mt-1">
+                </div>
                 <div>
                     <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Proof of
                         Ownership</label>

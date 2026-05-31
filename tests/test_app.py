@@ -183,8 +183,38 @@ def test_admin_post_routes_redirect_when_logged_out(client):
         ("/admin/delete-user/1", {}),
         ("/admin/approve-item/1", {}),
         ("/admin/reject-item/1", {}),
+        ("/admin/approve-claim/1", {}),
+        ("/admin/reject-claim/1", {}),
     ]
     for url, data in protected:
         with client:
             resp = client.post(url, data=data)
             assert resp.status_code == 302, f"POST {url} should redirect when logged out"
+
+
+def test_admin_approve_item_post_redirects(client):
+    with client:
+        client.post("/login", data={"email": "admin", "password": "changeme"})
+        resp = client.post("/admin/approve-item/9999")
+        assert resp.status_code == 302
+
+
+def test_admin_reject_item_post_redirects(client):
+    with client:
+        client.post("/login", data={"email": "admin", "password": "changeme"})
+        resp = client.post("/admin/reject-item/9999")
+        assert resp.status_code == 302
+
+
+def test_admin_approve_claim_post_redirects(client):
+    with client:
+        client.post("/login", data={"email": "admin", "password": "changeme"})
+        resp = client.post("/admin/approve-claim/9999")
+        assert resp.status_code == 302
+
+
+def test_admin_reject_claim_post_redirects(client):
+    with client:
+        client.post("/login", data={"email": "admin", "password": "changeme"})
+        resp = client.post("/admin/reject-claim/9999")
+        assert resp.status_code == 302

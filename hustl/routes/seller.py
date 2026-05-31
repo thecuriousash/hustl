@@ -78,10 +78,11 @@ def seller_dash():
         conn = get_db_connection()
         try:
             with conn.cursor() as cur:
+                is_approved = 1 if session.get("is_verified") else 0
                 cur.execute(
-                    """INSERT INTO market_items (title, description, price, category, condition, image, user_id)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                    (title, description, str(price), category, condition, image_path, session["user_id"]),
+                    """INSERT INTO market_items (title, description, price, category, condition, image, user_id, is_approved)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                    (title, description, str(price), category, condition, image_path, session["user_id"], is_approved),
                 )
                 conn.commit()
         finally:
@@ -94,7 +95,7 @@ def seller_dash():
     try:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT id, title, price, image, is_sold, created_at, brand, whatsapp
+                """SELECT id, title, price, image, is_sold, created_at, brand, whatsapp, is_approved
                    FROM market_items
                    WHERE user_id = %s
                    ORDER BY created_at DESC""",
@@ -113,6 +114,7 @@ def seller_dash():
             "is_sold": r[4],
             "created_at": r[5],
             "brand": r[6],
+            "is_approved": r[8],
         }
         for r in rows
     ]

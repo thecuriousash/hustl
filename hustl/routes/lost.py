@@ -25,7 +25,7 @@ def lost_and_found():
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, title, description, image, is_recovered, location, custody, created_at FROM lost_items ORDER BY created_at DESC"
+                "SELECT id, title, description, image, is_recovered, location, custody, created_at, claim_status FROM lost_items ORDER BY created_at DESC"
             )
             rows = cur.fetchall()
     finally:
@@ -41,6 +41,7 @@ def lost_and_found():
             "location": r[5] or "Campus (unreported)",
             "custody": r[6] or "Lost & Found Office",
             "created_at": r[7],
+            "claim_status": r[8] or "none",
         }
         for r in rows
     ]
@@ -105,6 +106,9 @@ def report_lost():
 @bp.route("/claim-item", methods=["POST"])
 def claim_item():
     item_id = request.form.get("item_id", type=int)
+    proof = request.form.get("proof", "").strip()
+    claimant_name = request.form.get("claimant_name", "").strip() or session.get("display_name", "Anonymous")
+
     if not item_id:
         flash("Invalid claim request.", "error")
         return redirect(url_for("lost.lost_and_found"))
@@ -113,11 +117,16 @@ def claim_item():
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE lost_items SET is_recovered = 1 WHERE id = %s AND is_recovered = 0",
-                (item_id,),
+                """UPDATE lost_items
+                   SET claim_status = 'pending', claimant_name = %s, claimant_proof = %s
+                   WHERE id = %s AND is_recovered = 0 AND claim_status = 'none'""",
+                (claimant_name, proof, item_id),
             )
-            conn.commit()
+            if cur.rowcount == 0:
+                flash("This item has already been claimed or recovered.", "error")
+            else:
+                conn.commit()
+                flash("Claim submitted. Awaiting admin review.")
     finally:
         close_db_connection(conn)
-    flash("Claim submitted successfully.")
     return redirect(url_for("lost.lost_and_found"))
