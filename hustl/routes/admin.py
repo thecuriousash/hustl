@@ -132,10 +132,58 @@ def reject_item(item_id: int):
     return redirect(url_for("admin.pending_approval"))
 
 
+@bp.route("/verify/<int:user_id>", methods=["POST"])
+@admin_required
+def verify_user(user_id: int):
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE public.users SET is_verified = 1 WHERE id = %s",
+                (user_id,),
+            )
+            conn.commit()
+    finally:
+        close_db_connection(conn)
+    flash("User verified.")
+    return redirect(url_for("admin.dashboard"))
+
+
+@bp.route("/unverify/<int:user_id>", methods=["POST"])
+@admin_required
+def unverify_user(user_id: int):
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE public.users SET is_verified = 0 WHERE id = %s",
+                (user_id,),
+            )
+            conn.commit()
+    finally:
+        close_db_connection(conn)
+    flash("User unverified.")
+    return redirect(url_for("admin.dashboard"))
+
+
 @bp.route("/pending-approval")
 @admin_required
 def pending_approval():
     return render_template("pending_approval.html")
+
+
+@bp.route("/delete-item/<int:item_id>", methods=["POST"])
+@admin_required
+def delete_item(item_id: int):
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM market_items WHERE id = %s", (item_id,))
+            conn.commit()
+    finally:
+        close_db_connection(conn)
+    flash("Item deleted.")
+    return redirect(url_for("admin.all_listings"))
 
 
 @bp.route("/listings")

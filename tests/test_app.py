@@ -76,6 +76,6 @@ def test_error_page(client):
 
 
 def test_login_fails_with_empty_data(client):
-    resp = client.post("/login", data={"username": "", "password": ""})
+    resp = client.post("/login", data={"email": "", "password": ""})
     assert resp.status_code == 200
     assert b"required" in resp.data.lower() or b"invalid" in resp.data.lower()
