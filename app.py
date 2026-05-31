@@ -1,5 +1,6 @@
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from psycopg2.pool import ThreadedConnectionPool
 from supabase import create_client, Client
 import os
 import re
@@ -9,6 +10,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from functools import wraps
+from contextlib import contextmanager
 from flask import Flask, render_template, request, redirect, session, url_for, flash, abort
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -58,17 +61,43 @@ else:
 
 EMAIL_RE = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
 
+_pool = None
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def _init_pool():
+    global _pool
+    if DATABASE_URL and _pool is None:
+        try:
+            _pool = ThreadedConnectionPool(2, 20, DATABASE_URL)
+        except Exception as e:
+            app.logger.warning("Failed to create connection pool: %s. Falling back to direct connections.", e)
 
 
 def get_db_connection():
     if not DATABASE_URL:
         raise Exception("DATABASE_URL is not set. Please configure it in your environment.")
+    global _pool
+    if _pool is None:
+        _init_pool()
+    if _pool:
+        conn = _pool.getconn()
+        conn.autocommit = False
+        return conn
     conn = psycopg2.connect(DATABASE_URL)
     conn.autocommit = False
     return conn
+
+
+def close_db_connection(conn):
+    if conn:
+        if _pool:
+            _pool.putconn(conn)
+        else:
+            close_db_connection(conn)
+
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 def safe_execute(conn, sql, params=(), commit=False, fetchone=False, fetchall=False):
@@ -123,7 +152,7 @@ def init_db():
                         status TEXT DEFAULT 'pending',
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''', commit=True)
     finally:
-        conn.close()
+        close_db_connection(conn)
 
 
 try:
@@ -173,6 +202,16 @@ def server_error(e):
     return render_template("error.html", code=500, message="Something went wrong."), 500
 
 
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get('email'):
+            flash("Please log in to view this page.", "error")
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated
+
+
 def get_current_user():
     email = session.get('email')
     if not email:
@@ -183,7 +222,7 @@ def get_current_user():
             user = safe_execute(conn, 'SELECT * FROM users WHERE email = %s', (email,), fetchone=True)
             return user
         finally:
-            conn.close()
+            close_db_connection(conn)
     except Exception as e:
         app.logger.error("Database error in get_current_user: %s", e)
         return None
@@ -205,7 +244,7 @@ def index():
             market_items = safe_execute(
                 conn,
                 '''SELECT market_items.*, 
-                          COALESCE(users.display_name, market_items.seller_brand, users.email, 'Campus Seller') AS seller_display
+                          COALESCE(users.display_name, market_items.seller_brand, 'Campus Seller') AS seller_display
                    FROM market_items
                    LEFT JOIN users ON market_items.user_id = users.id
                    WHERE market_items.is_sold = 0
@@ -218,7 +257,7 @@ def index():
                 fetchall=True
             ) or []
         finally:
-            conn.close()
+            close_db_connection(conn)
     except Exception as e:
         app.logger.error("Database error in index route: %s", e)
         market_items = []
@@ -247,7 +286,7 @@ def login():
             else:
                 flash("Invalid email or password.", "error")
         finally:
-            conn.close()
+            close_db_connection(conn)
     return render_template("auth.html", is_login=True)
 
 
@@ -289,7 +328,7 @@ def signup():
             flash("Account created successfully!", "success")
             return redirect(url_for('index'))
         finally:
-            conn.close()
+            close_db_connection(conn)
     return render_template("auth.html", is_login=False)
 
 
@@ -330,7 +369,7 @@ def seller_onboarding():
             return render_template("pending_approval.html")
 
     finally:
-        conn.close()
+        close_db_connection(conn)
     return render_template("seller_onboarding.html")
 
 
@@ -384,24 +423,25 @@ def market():
             return redirect(url_for('market'))
 
         items = safe_execute(conn, '''SELECT market_items.*, 
-                                        COALESCE(users.display_name, market_items.seller_brand, users.email, 'Campus Seller') AS seller_display
+                                        COALESCE(users.display_name, market_items.seller_brand, 'Campus Seller') AS seller_display
                                 FROM market_items
                                 LEFT JOIN users ON market_items.user_id = users.id
                                 WHERE market_items.is_sold = 0
                                 ORDER BY market_items.id DESC''', fetchall=True) or []
     finally:
-        conn.close()
+        close_db_connection(conn)
     return render_template("market.html", items=items,
                            user_type=(user['user_type'] if user else 'buyer'),
                            user=user)
 
 
 @app.route("/listing/<int:item_id>")
+@login_required
 def listing_detail(item_id):
     conn = get_db_connection()
     try:
         item = safe_execute(conn, '''SELECT market_items.*, 
-                                        COALESCE(users.display_name, market_items.seller_brand, users.email, 'Campus Seller') AS seller_display
+                                        COALESCE(users.display_name, market_items.seller_brand, 'Campus Seller') AS seller_display
                                         FROM market_items 
                                         LEFT JOIN users ON market_items.user_id = users.id
                                         WHERE market_items.id = %s''', (item_id,), fetchone=True)
@@ -412,7 +452,7 @@ def listing_detail(item_id):
             other_products = safe_execute(
                 conn,
                 '''SELECT market_items.*, 
-                          COALESCE(users.display_name, market_items.seller_brand, users.email, 'Campus Seller') AS seller_display
+                          COALESCE(users.display_name, market_items.seller_brand, 'Campus Seller') AS seller_display
                    FROM market_items 
                    LEFT JOIN users ON market_items.user_id = users.id
                    WHERE market_items.user_id = %s AND market_items.id != %s AND market_items.is_sold = 0 
@@ -420,7 +460,7 @@ def listing_detail(item_id):
                 (item['user_id'], item_id), fetchall=True
             ) or []
     finally:
-        conn.close()
+        close_db_connection(conn)
     return render_template("listing_detail.html", item=item, other_products=other_products, quantity=1)
 
 
@@ -439,11 +479,12 @@ def seller_dash():
             (user['id'],), fetchall=True
         ) or []
     finally:
-        conn.close()
+        close_db_connection(conn)
     return render_template("seller_dash.html", items=items, user=user)
 
 
 @app.route("/seller/<int:user_id>")
+@login_required
 def seller_profile(user_id):
     conn = get_db_connection()
     try:
@@ -457,7 +498,7 @@ def seller_profile(user_id):
             (user_id,), fetchall=True
         ) or []
     finally:
-        conn.close()
+        close_db_connection(conn)
     return render_template("seller_profile.html",
                            name=seller['display_name'],
                            whatsapp=seller['whatsapp'],
@@ -479,7 +520,7 @@ def mark_sold(item_id):
             abort(403)
         safe_execute(conn, 'UPDATE market_items SET is_sold = 1 WHERE id = %s', (item_id,), commit=True)
     finally:
-        conn.close()
+        close_db_connection(conn)
     return redirect(url_for('seller_dash'))
 
 
@@ -530,7 +571,7 @@ def lost():
                                         "SELECT COUNT(*) as count FROM claim_requests WHERE status = 'approved'",
                                         fetchone=True)['count']
     finally:
-        conn.close()
+        close_db_connection(conn)
     return render_template("lost.html",
                            items=items,
                            recovered_week=recovered_week,
@@ -558,7 +599,7 @@ def claim_item():
                      (item_id, session['email'], proof), commit=True)
         flash("Claim request submitted successfully! Admin will review it.", "success")
     finally:
-        conn.close()
+        close_db_connection(conn)
 
     return redirect(url_for('lost'))
 
@@ -597,7 +638,7 @@ def admin_dashboard():
         active_reports = safe_execute(conn, "SELECT COUNT(*) as count FROM lost_items WHERE is_recovered = 0", fetchone=True)['count']
 
     finally:
-        conn.close()
+        close_db_connection(conn)
     return render_template("admin/dashboard.html",
                            pending_users=pending_users,
                            market_oversight=market_oversight,
@@ -629,7 +670,7 @@ def verify_user(uid):
     try:
         safe_execute(conn, 'UPDATE users SET is_verified = 1 WHERE id = %s', (uid,), commit=True)
     finally:
-        conn.close()
+        close_db_connection(conn)
     return redirect(url_for('admin_dashboard'))
 
 
@@ -641,7 +682,7 @@ def admin_manage_users():
     try:
         users = safe_execute(conn, 'SELECT * FROM users ORDER BY id DESC', fetchall=True) or []
     finally:
-        conn.close()
+        close_db_connection(conn)
     return render_template("admin/users.html", users=users)
 
 
@@ -656,7 +697,7 @@ def admin_manage_items():
                                  FROM market_items LEFT JOIN users ON market_items.user_id = users.id
                                  ORDER BY market_items.id DESC''', fetchall=True) or []
     finally:
-        conn.close()
+        close_db_connection(conn)
     return render_template("admin/manage_items.html", items=items)
 
 
@@ -675,7 +716,7 @@ def admin_delete_item(item_id):
                     pass
         safe_execute(conn, 'DELETE FROM market_items WHERE id = %s', (item_id,), commit=True)
     finally:
-        conn.close()
+        close_db_connection(conn)
     return redirect(request.referrer or url_for('admin_manage_items'))
 
 
@@ -691,7 +732,7 @@ def approve_claim(claim_id):
             safe_execute(conn, "UPDATE lost_items SET is_recovered = 1 WHERE id = %s", (claim['item_id'],), commit=True)
             flash("Claim approved and item marked as recovered!", "success")
     finally:
-        conn.close()
+        close_db_connection(conn)
     return redirect(url_for('admin_dashboard'))
 
 
@@ -704,7 +745,7 @@ def reject_claim(claim_id):
         safe_execute(conn, "UPDATE claim_requests SET status = 'rejected' WHERE id = %s", (claim_id,), commit=True)
         flash("Claim request rejected.", "success")
     finally:
-        conn.close()
+        close_db_connection(conn)
     return redirect(url_for('admin_dashboard'))
 
 
