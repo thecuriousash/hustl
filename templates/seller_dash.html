@@ -21,12 +21,12 @@
             <p class="text-3xl font-brand font-bold italic text-white">{{ items|length }}</p>
         </div>
         <div class="glass p-8 rounded-[40px] border-emerald-500/20">
-            <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Total Sales</p>
-            <p class="text-3xl font-brand font-bold italic text-emerald-400">---</p>
+            <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Sold Items</p>
+            <p class="text-3xl font-brand font-bold italic text-emerald-400">{{ items|selectattr('is_sold', 'equalto', 1)|list|length }}</p>
         </div>
         <div class="glass p-8 rounded-[40px] border-purple-500/20">
-            <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Seller Rating</p>
-            <p class="text-3xl font-brand font-bold italic text-purple-400">4.9</p>
+            <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Listed Since</p>
+            <p class="text-lg font-brand font-bold italic text-purple-400">Active</p>
         </div>
     </div>
 
@@ -67,13 +67,17 @@
                             {% endif %}
                         </td>
                         <td class="py-6 text-right">
-                            {% if not item.is_sold == 1 %}
-                            <a href="/market/sold/{{ item.id }}"
-                                class="text-[10px] font-bold text-slate-500 hover:text-white transition-all uppercase tracking-widest underline decoration-white/10 hover:decoration-white">Mark
-                                Sold</a>
-                            {% else %}
-                            <span class="text-[10px] font-bold text-slate-800 uppercase tracking-widest">Ended</span>
-                            {% endif %}
+                            <div class="flex items-center justify-end gap-3">
+                                {% if not item.is_sold == 1 %}
+                                <a href="/market/sold/{{ item.id }}"
+                                    class="text-[10px] font-bold text-emerald-500/70 hover:text-emerald-400 transition-all uppercase tracking-widest">Mark Sold</a>
+                                {% else %}
+                                <span class="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Sold</span>
+                                {% endif %}
+                                <a href="/market/delete/{{ item.id }}"
+                                    onclick="return confirm('Delete this listing permanently?')"
+                                    class="text-[10px] font-bold text-red-500/50 hover:text-red-400 transition-all uppercase tracking-widest">Delete</a>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}

@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="max-w-4xl mx-auto animate-fade">
+<div class="max-w-4xl mx-auto animate-up">
     <div class="glass p-10 rounded-[40px] mb-12 flex flex-col md:flex-row items-center gap-8">
-        <div class="w-32 h-32 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-4xl shadow-2xl">
-            👤
+        <div class="w-32 h-32 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-5xl font-black italic shadow-2xl text-white">
+            {{ name[0]|upper if name else '?' }}
         </div>
         <div class="text-center md:text-left">
-            <h1 class="brand text-4xl font-black text-white">{{ name }}</h1>
+            <h1 class="font-brand text-4xl font-bold italic tracking-tighter">{{ name }}</h1>
             <p class="text-indigo-400 text-sm font-bold tracking-widest uppercase mb-4">Verified Seller</p>
             <div class="flex flex-wrap gap-4 justify-center md:justify-start">
                 <span class="text-xs text-slate-500">Member since: <b class="text-slate-300">{{ join_date }}</b></span>
@@ -18,12 +18,12 @@
         </a>
     </div>
 
-    <h2 class="brand text-2xl text-white mb-8 px-4">Active Inventory</h2>
+    <h2 class="font-brand text-2xl font-bold italic mb-8 px-4">Active Inventory</h2>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
         {% for item in items %}
         <a href="/listing/{{ item['id'] }}" class="glass p-6 rounded-3xl flex gap-4 hover:border-indigo-500/50 transition-all">
             <div class="w-20 h-20 bg-slate-900 rounded-xl overflow-hidden flex-shrink-0">
-                {% if item['image'] %}<img src="{{ url_for('static', filename='images/' ~ item['image']) }}" class="w-full h-full object-cover">{% endif %}
+                {% if item['image'] %}<img src="{{ get_image_url(item['image']) }}" class="w-full h-full object-cover">{% endif %}
             </div>
             <div>
                 <h3 class="text-white font-bold">{{ item['title'] }}</h3>

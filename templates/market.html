@@ -23,18 +23,18 @@
         </div>
     </div>
 
-    <!-- Filters placeholder -->
+    <!-- Filters -->
     <div class="mb-10 flex gap-4 overflow-x-auto pb-4 no-scrollbar">
-        <button
-            class="glass px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest bg-indigo-500/20 text-white border-indigo-500/50">All</button>
-        <button
-            class="glass px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition-all">Tech</button>
-        <button
-            class="glass px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition-all">Books</button>
-        <button
-            class="glass px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition-all">Fashion</button>
-        <button
-            class="glass px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition-all">Home</button>
+        <a href="/market"
+            class="glass px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest {% if not category %}bg-indigo-500/20 text-white border-indigo-500/50{% else %}text-slate-500 hover:text-white{% endif %} transition-all">All</a>
+        <a href="/market?category=tech"
+            class="glass px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest {% if category == 'tech' %}bg-indigo-500/20 text-white border-indigo-500/50{% else %}text-slate-500 hover:text-white{% endif %} transition-all">Tech</a>
+        <a href="/market?category=books"
+            class="glass px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest {% if category == 'books' %}bg-indigo-500/20 text-white border-indigo-500/50{% else %}text-slate-500 hover:text-white{% endif %} transition-all">Books</a>
+        <a href="/market?category=fashion"
+            class="glass px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest {% if category == 'fashion' %}bg-indigo-500/20 text-white border-indigo-500/50{% else %}text-slate-500 hover:text-white{% endif %} transition-all">Fashion</a>
+        <a href="/market?category=home"
+            class="glass px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest {% if category == 'home' %}bg-indigo-500/20 text-white border-indigo-500/50{% else %}text-slate-500 hover:text-white{% endif %} transition-all">Home</a>
     </div>
 
     <!-- Grid -->
@@ -89,5 +89,26 @@
         </div>
         {% endfor %}
     </div>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <div class="flex justify-center gap-4 mt-12">
+        {% if page > 1 %}
+        <a href="/market?page={{ page - 1 }}{% if category %}&category={{ category }}{% endif %}"
+            class="glass px-6 py-3 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-white/10 transition-all">
+            &larr; Previous
+        </a>
+        {% endif %}
+        <span class="flex items-center text-xs text-slate-500 font-bold tracking-widest">
+            Page {{ page }} of {{ total_pages }}
+        </span>
+        {% if page < total_pages %}
+        <a href="/market?page={{ page + 1 }}{% if category %}&category={{ category }}{% endif %}"
+            class="glass px-6 py-3 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-white/10 transition-all">
+            Next &rarr;
+        </a>
+        {% endif %}
+    </div>
+    {% endif %}
 </div>
 {% endblock %}
