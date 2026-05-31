@@ -18,7 +18,8 @@
                     <th class="pb-4">User Details</th>
                     <th class="pb-4">Type / Role</th>
                     <th class="pb-4">Verification</th>
-                    <th class="pb-4 text-right">Registered</th>
+                    <th class="pb-4 text-right">Actions</th>
+                    <th class="pb-4 text-right hidden md:table-cell">Registered</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-white/5">
@@ -37,18 +38,41 @@
                     </td>
                     <td class="py-6">
                         {% if u.is_verified == 1 %}
-                        <span class="text-xs font-bold text-green-500 flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]"></span>
-                            Verified
-                        </span>
+                        <form action="/admin/unverify/{{ u.id }}" method="POST" class="inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit"
+                                class="text-xs font-bold text-green-500 flex items-center gap-2 hover:text-amber-400 transition-colors cursor-pointer">
+                                <span class="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]"></span>
+                                Verified
+                            </button>
+                        </form>
                         {% else %}
-                        <span class="text-xs font-bold text-slate-600 flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full bg-slate-700"></span>
-                            Unverified
-                        </span>
+                        <form action="/admin/verify/{{ u.id }}" method="POST" class="inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit"
+                                class="text-xs font-bold text-slate-600 flex items-center gap-2 hover:text-green-500 transition-colors cursor-pointer">
+                                <span class="w-2 h-2 rounded-full bg-slate-700"></span>
+                                Unverified
+                            </button>
+                        </form>
                         {% endif %}
                     </td>
-                    <td class="py-6 text-right text-xs text-slate-500">{{ u.created_at.strftime('%d %b %Y') if u.created_at else '—' }}</td>
+                    <td class="py-6 text-right">
+                        {% if u.user_type == 'seller' and u.is_verified == 0 %}
+                        <form action="/admin/verify/{{ u.id }}" method="POST" class="inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit"
+                                class="bg-green-500/10 text-green-500 px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase hover:bg-green-500 hover:text-white transition-all">Verify</button>
+                        </form>
+                        {% endif %}
+                        <form action="/admin/delete-user/{{ u.id }}" method="POST" class="inline"
+                            onsubmit="return confirm('Delete this user and all their listings?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit"
+                                class="bg-red-500/10 text-red-500 px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase hover:bg-red-500 hover:text-white transition-all">Delete</button>
+                        </form>
+                    </td>
+                    <td class="py-6 text-right text-xs text-slate-500 hidden md:table-cell">{{ u.created_at.strftime('%d %b %Y') if u.created_at else '—' }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
