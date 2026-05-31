@@ -171,7 +171,7 @@
                 {% endif %}
                 <div
                     class="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 border border-white/10 flex items-center justify-center text-[10px] font-black uppercase shadow-lg shadow-indigo-500/20">
-                    {{ session.get('display_name')[0] }}
+                    {{ (session.get('display_name') or '?')[0] }}
                 </div>
                 <a href="/logout"
                     class="text-xs font-bold text-red-500/70 hover:text-red-500 transition-colors uppercase tracking-tighter">Exit</a>
@@ -263,7 +263,7 @@
                 </svg>
             </button>
             <h2 class="font-brand text-2xl font-bold italic mb-6">List New Product</h2>
-            <form action="/market" method="POST" enctype="multipart/form-data" class="space-y-6">
+            <form action="/seller-dash" method="POST" enctype="multipart/form-data" class="space-y-6">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div>
                     <label class="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Title</label>
